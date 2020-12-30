@@ -1,3 +1,4 @@
+import { code_differs } from "../components/Cell.js"
 import { timeout_promise } from "./PlutoConnection.js"
 
 export const create_counter_statistics = () => {
@@ -5,11 +6,10 @@ export const create_counter_statistics = () => {
         numEvals: 0, // integer
         numRuns: 0, // integer
         numBondSets: 0, // integer
-        numFileDrops: 0, // integer
     }
 }
 
-const first_line = (cell) => /(.*)/.exec(cell.code)[0]
+const first_line = (cell) => /(.*)/.exec(cell.local_code.body)[0]
 const count_matches = (pattern, haystack) => (haystack.match(pattern) || []).length
 const value_counts = (values) =>
     values.reduce((prev_counts, val) => {
@@ -18,45 +18,30 @@ const value_counts = (values) =>
     }, {})
 const sum = (values) => values.reduce((a, b) => a + b, 0)
 
-/**
- * @param {{
- *  notebook: import("../components/Editor.js").NotebookData
- *  cell_inputs_local: { [id: string]: import("../components/Editor.js").CellInputData }
- * }} state
- * */
 export const finalize_statistics = async (state, client, counter_statistics) => {
-    const cell_results = state.notebook.cell_order.map((cell_id) => state.notebook.cell_results[cell_id]).filter((x) => x != null)
-    const cells = state.notebook.cell_order.map((cell_id) => state.notebook.cell_inputs[cell_id]).filter((x) => x != null)
-    const cell_inputs_local = state.notebook.cell_order.map((cell_id) => {
-        return {
-            ...(state.cell_inputs_local[cell_id] ?? state.notebook.cell_inputs[cell_id]),
-            ...state.cell_inputs_local[cell_id],
-        }
-    })
+    const cells = state.notebook.cells
 
     const statistics = {
         numCells: cells.length,
         // integer
-        numErrored: cell_results.filter((c) => c.errored).length,
+        numErrored: cells.filter((c) => c.errored).length,
         // integer
         numFolded: cells.filter((c) => c.code_folded).length,
         // integer
-        numCodeDiffers: state.notebook.cell_order.filter(
-            (cell_id) => state.notebook.cell_inputs[cell_id].code === (state.cell_inputs_local[cell_id]?.code ?? state.notebook.cell_inputs[cell_id].code)
-        ).length,
+        numCodeDiffers: cells.filter(code_differs).length,
         // integer
-        numMarkdowns: cell_inputs_local.filter((c) => first_line(c).startsWith('md"')).length,
+        numMarkdowns: cells.filter((c) => first_line(c).startsWith('md"')).length,
         // integer
-        numBinds: sum(cell_inputs_local.map((c) => count_matches(/\@bind/g, c.code))),
+        numBinds: sum(cells.map((c) => count_matches(/\@bind/g, c.local_code.body))),
         // integer
-        numBegins: cell_inputs_local.filter((c) => first_line(c).endsWith("begin")).length,
+        numBegins: cells.filter((c) => first_line(c).endsWith("begin")).length,
         // integer
-        numLets: cell_inputs_local.filter((c) => first_line(c).endsWith("let")).length,
+        numLets: cells.filter((c) => first_line(c).endsWith("let")).length,
         // integer
-        cellSizes: value_counts(cell_inputs_local.map((c) => count_matches(/\n/g, c.code) + 1)),
+        cellSizes: value_counts(cells.map((c) => count_matches(/\n/g, c.local_code.body) + 1)),
         // {numLines: numCells, ...}
         // e.g. {1: 28,  3: 14,  5: 7,  7: 1,  12: 1,  14: 1}
-        runtimes: value_counts(cell_results.map((c) => Math.floor(Math.log10(c.runtime + 1)))),
+        runtimes: value_counts(cells.map((c) => Math.floor(Math.log10(c.runtime + 1)))),
         // {runtime: numCells, ...}
         // where `runtime` is log10, rounded
         // e.g. {1: 28,  3: 14,  5: 7,  7: 1,  12: 1,  14: 1}
@@ -65,7 +50,6 @@ export const finalize_statistics = async (state, client, counter_statistics) => 
         // string, e.g. "v0.7.10"
         // versionJulia: client.julia_version,
         //     // string, e.g. "v1.0.5"
-        // @ts-ignore
         timestamp: firebase.firestore.Timestamp.now(),
         // timestamp (ms)
         screenWidthApprox: 100 * Math.round(document.body.clientWidth / 100),
@@ -110,13 +94,11 @@ const feedbackdb = {
     instance: null,
 }
 const init_firebase = () => {
-    // @ts-ignore
     firebase.initializeApp({
         apiKey: "AIzaSyC0DqEcaM8AZ6cvApXuNcNU2RgZZOj7F68",
         authDomain: "localhost",
         projectId: "pluto-feedback",
     })
-    // @ts-ignore
     feedbackdb.instance = firebase.firestore()
 }
 
@@ -129,9 +111,7 @@ export const init_feedback = () => {
 
         timeout_promise(
             feedbackdb.instance.collection("feedback").add({
-                // @ts-ignore
                 feedback: new FormData(e.target).get("opinion"),
-                // @ts-ignore
                 timestamp: firebase.firestore.Timestamp.now(),
                 email: email ? email : "",
             }),
@@ -141,7 +121,6 @@ export const init_feedback = () => {
                 let message = "Submitted. Thank you for your feedback! 💕"
                 console.log(message)
                 alert(message)
-                // @ts-ignore
                 feedbackform.querySelector("#opinion").value = ""
             })
             .catch((error) => {

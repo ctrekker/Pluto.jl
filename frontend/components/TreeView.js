@@ -1,7 +1,6 @@
-import { html, useRef, useState, useContext } from "../imports/Preact.js"
+import { html, useRef, useState } from "../imports/Preact.js"
 
 import { PlutoImage, RawHTMLContainer } from "./CellOutput.js"
-import { PlutoContext } from "../common/PlutoContext.js"
 
 // this is different from OutputBody because:
 // it does not wrap in <div>. We want to do that in OutputBody for reasons that I forgot (feel free to try and remove it), but we dont want it here
@@ -9,7 +8,7 @@ import { PlutoContext } from "../common/PlutoContext.js"
 // whatever
 //
 // TODO: remove this, use OutputBody instead, and fix the CSS classes so that i all looks nice again
-const SimpleOutputBody = ({ mime, body, cell_id, persist_js_state }) => {
+const SimpleOutputBody = ({ mime, body, cell_id, all_completed_promise, requests, persist_js_state }) => {
     switch (mime) {
         case "image/png":
         case "image/jpg":
@@ -20,13 +19,30 @@ const SimpleOutputBody = ({ mime, body, cell_id, persist_js_state }) => {
             return html`<${PlutoImage} mime=${mime} body=${body} />`
             break
         case "text/html":
-            return html`<${RawHTMLContainer} body=${body} persist_js_state=${persist_js_state} />`
+            return html`<${RawHTMLContainer}
+                body=${body}
+                all_completed_promise=${all_completed_promise}
+                requests=${requests}
+                persist_js_state=${persist_js_state}
+            />`
             break
         case "application/vnd.pluto.tree+object":
-            return html`<${TreeView} cell_id=${cell_id} body=${body} persist_js_state=${persist_js_state} />`
+            return html`<${TreeView}
+                cell_id=${cell_id}
+                body=${body}
+                all_completed_promise=${all_completed_promise}
+                requests=${requests}
+                persist_js_state=${persist_js_state}
+            />`
             break
         case "application/vnd.pluto.table+object":
-            return html` <${TableView} cell_id=${cell_id} body=${body} persist_js_state=${persist_js_state} />`
+            return html` <${TableView}
+                cell_id=${cell_id}
+                body=${body}
+                all_completed_promise=${all_completed_promise}
+                requests=${requests}
+                persist_js_state=${persist_js_state}
+            />`
             break
         case "text/plain":
         default:
@@ -51,12 +67,11 @@ const More = ({ on_click_more }) => {
     >`
 }
 
-export const TreeView = ({ mime, body, cell_id, persist_js_state }) => {
-    let pluto_actions = useContext(PlutoContext)
+export const TreeView = ({ mime, body, cell_id, all_completed_promise, requests, persist_js_state }) => {
     const node_ref = useRef(null)
     const onclick = (e) => {
         // TODO: this could be reactified but no rush
-        let self = node_ref.current
+        self = node_ref.current
         if (e.target !== self && !self.classList.contains("collapsed")) {
             return
         }
@@ -74,10 +89,17 @@ export const TreeView = ({ mime, body, cell_id, persist_js_state }) => {
         if (node_ref.current.closest("jltree.collapsed") != null) {
             return false
         }
-        pluto_actions.reshow_cell(cell_id, body.objectid, 1)
+        requests.reshow_cell(cell_id, body.objectid, 1)
     }
 
-    const mimepair_output = (pair) => html`<${SimpleOutputBody} cell_id=${cell_id} mime=${pair[1]} body=${pair[0]} persist_js_state=${persist_js_state} />`
+    const mimepair_output = (pair) => html`<${SimpleOutputBody}
+        cell_id=${cell_id}
+        mime=${pair[1]}
+        body=${pair[0]}
+        all_completed_promise=${all_completed_promise}
+        requests=${requests}
+        persist_js_state=${persist_js_state}
+    />`
     const more = html`<r><${More} on_click_more=${on_click_more} /></r>`
 
     var inner = null
@@ -113,14 +135,20 @@ export const TreeView = ({ mime, body, cell_id, persist_js_state }) => {
     return html`<jltree class="collapsed" onclick=${onclick} ref=${node_ref}>${inner}</jltree>`
 }
 
-export const TableView = ({ mime, body, cell_id, persist_js_state }) => {
-    let pluto_actions = useContext(PlutoContext)
+export const TableView = ({ mime, body, cell_id, all_completed_promise, requests, persist_js_state }) => {
     const node_ref = useRef(null)
 
-    const mimepair_output = (pair) => html`<${SimpleOutputBody} cell_id=${cell_id} mime=${pair[1]} body=${pair[0]} persist_js_state=${persist_js_state} />`
+    const mimepair_output = (pair) => html`<${SimpleOutputBody}
+        cell_id=${cell_id}
+        mime=${pair[1]}
+        body=${pair[0]}
+        all_completed_promise=${all_completed_promise}
+        requests=${requests}
+        persist_js_state=${persist_js_state}
+    />`
     const more = (dim) => html`<${More}
         on_click_more=${() => {
-            pluto_actions.reshow_cell(cell_id, body.objectid, dim)
+            requests.reshow_cell(cell_id, body.objectid, dim)
         }}
     />`
 

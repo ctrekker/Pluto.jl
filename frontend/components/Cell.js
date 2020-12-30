@@ -1,43 +1,97 @@
-import { html, useState, useEffect, useMemo, useRef, useContext } from "../imports/Preact.js"
+import { html, useState, useEffect, useLayoutEffect, useRef } from "../imports/Preact.js"
 
 import { CellOutput } from "./CellOutput.js"
 import { CellInput } from "./CellInput.js"
 import { RunArea, useMillisSinceTruthy } from "./RunArea.js"
 import { cl } from "../common/ClassTable.js"
-import { useDropHandler } from "./useDropHandler.js"
-import { PlutoContext } from "../common/PlutoContext.js"
 
 /**
- * @param {{
- *  cell_input: import("./Editor.js").CellInputData,
- *  cell_result: import("./Editor.js").CellResultData,
- *  cell_input_local: import("./Editor.js").CellInputData,
- *  selected: boolean,
- *  focus_after_creation: boolean,
- *  force_hide_input: boolean,
- *  selected_cells: Array<string>,
- *  [key: string]: any,
- * }} props
- * */
+ * @typedef {Object} CodeState
+ * @property {string} body
+ * @property {number} [timestamp]
+ * @property {boolean} [submitted_by_me]
+ */
+
+/**
+ * A cell!
+ * @typedef {Object} CellState
+ * @property {string} cell_id
+ * @property {CodeState} remote_code
+ * @property {CodeState} local_code
+ * @property {boolean} code_folded
+ * @property {boolean} queued
+ * @property {boolean} running
+ * @property {?number} runtime
+ * @property {boolean} errored
+ * @property {{body: string, timestamp: number, mime: string, rootassignee: ?string}} output
+ * @property {boolean} selected
+ * @property {boolean} pasted
+ */
+
+/**
+ *
+ * @param {string} cell_id
+ * @returns {CellState}
+ */
+export const empty_cell_data = (cell_id) => {
+    return {
+        cell_id: cell_id,
+        remote_code: {
+            body: "",
+            timestamp: 0, // don't use Pluto before 1970!
+            submitted_by_me: false,
+        },
+        local_code: {
+            body: "",
+        },
+        code_folded: false,
+        queued: true,
+        running: false,
+        runtime: null,
+        errored: false,
+        output: {
+            body: null,
+            timestamp: 0, // proof that Apollo 11 used Jupyter!
+            mime: "text/plain",
+            rootassignee: null,
+        },
+        selected: false,
+        pasted: false,
+    }
+}
+
+/**
+ *
+ * @param {CellState} cell
+ * @return {boolean}
+ */
+export const code_differs = (cell) => cell.remote_code.body !== cell.local_code.body
+
 export const Cell = ({
-    cell_input: { cell_id, code, code_folded },
-    cell_result: { queued, running, runtime, errored, output },
-    cell_input_local,
+    cell_id,
+    remote_code,
+    local_code,
+    code_folded,
+    queued,
+    running,
+    runtime,
+    errored,
+    output,
     selected,
     on_change,
     on_update_doc_query,
     on_focus_neighbor,
     disable_input,
     focus_after_creation,
-    force_hide_input,
-    selected_cells,
+    scroll_into_view_after_creation,
+    all_completed_promise,
+    selected_friends,
+    requests,
+    client,
     notebook_id,
 }) => {
-    let pluto_actions = useContext(PlutoContext)
-
     // cm_forced_focus is null, except when a line needs to be highlighted because it is part of a stack trace
     const [cm_forced_focus, set_cm_forced_focus] = useState(null)
-    const { saving_file, drag_active, handler } = useDropHandler()
     const localTimeRunning = 10e5 * useMillisSinceTruthy(running)
     useEffect(() => {
         const focusListener = (e) => {
@@ -59,18 +113,13 @@ export const Cell = ({
         }
     }, [])
 
-    const class_code_differs = code !== (cell_input_local?.code ?? code)
+    const class_code_differs = remote_code.body !== local_code.body
     const class_code_folded = code_folded && cm_forced_focus == null
 
-    // during the initial page load, force_hide_input === true, so that cell outputs render fast, and codemirrors are loaded after
-    let show_input = !force_hide_input && (errored || class_code_differs || !class_code_folded)
+    let show_input = errored || class_code_differs || !class_code_folded
 
     return html`
         <pluto-cell
-            onDragOver=${handler}
-            onDrop=${handler}
-            onDragEnter=${handler}
-            onDragLeave=${handler}
             class=${cl({
                 queued: queued,
                 running: running,
@@ -78,19 +127,14 @@ export const Cell = ({
                 selected: selected,
                 code_differs: class_code_differs,
                 code_folded: class_code_folded,
-                drop_target: drag_active,
-                saving_file: saving_file,
             })}
             id=${cell_id}
         >
             <pluto-shoulder draggable="true" title="Drag to move cell">
                 <button
                     onClick=${() => {
-                        let cells_to_fold = selected ? selected_cells : [cell_id]
-                        pluto_actions.update_notebook((notebook) => {
-                            for (let cell_id of cells_to_fold) {
-                                notebook.cell_inputs[cell_id].code_folded = !code_folded
-                            }
+                        selected_friends(cell_id).forEach((friend) => {
+                            requests.fold_remote_cell(friend.cell_id, !code_folded)
                         })
                     }}
                     class="foldcode"
@@ -102,59 +146,65 @@ export const Cell = ({
             <pluto-trafficlight></pluto-trafficlight>
             <button
                 onClick=${() => {
-                    pluto_actions.add_remote_cell(cell_id, "before")
+                    requests.add_remote_cell(cell_id, "before")
                 }}
                 class="add_cell before"
                 title="Add cell"
             >
                 <span></span>
             </button>
-            <${CellOutput} ...${output} cell_id=${cell_id} />
+            <${CellOutput} ...${output} all_completed_promise=${all_completed_promise} requests=${requests} cell_id=${cell_id} />
             ${show_input &&
             html`<${CellInput}
-                local_code=${cell_input_local?.code ?? code}
-                remote_code=${code}
+                local_code=${local_code}
+                remote_code=${remote_code}
                 disable_input=${disable_input}
                 focus_after_creation=${focus_after_creation}
+                scroll_into_view_after_creation=${scroll_into_view_after_creation}
                 cm_forced_focus=${cm_forced_focus}
                 set_cm_forced_focus=${set_cm_forced_focus}
-                on_drag_drop_events=${handler}
-                on_submit=${() => {
-                    pluto_actions.change_remote_cell(cell_id)
+                on_submit=${(new_code) => {
+                    requests.change_remote_cell(cell_id, new_code)
                 }}
                 on_delete=${() => {
-                    let cells_to_delete = selected ? selected_cells : [cell_id]
-                    pluto_actions.confirm_delete_multiple("Delete", cells_to_delete)
+                    const friends = selected_friends(cell_id)
+                    requests.confirm_delete_multiple("Delete", friends)
                 }}
                 on_add_after=${() => {
-                    pluto_actions.add_remote_cell(cell_id, "after")
+                    requests.add_remote_cell(cell_id, "after")
                 }}
-                on_fold=${(new_folded) => pluto_actions.fold_remote_cell(cell_id, new_folded)}
+                on_fold=${(new_folded) => requests.fold_remote_cell(cell_id, new_folded)}
                 on_change=${(new_code) => {
                     if (code_folded && cm_forced_focus != null) {
-                        pluto_actions.fold_remote_cell(cell_id, false)
+                        requests.fold_remote_cell(cell_id, false)
                     }
                     on_change(new_code)
                 }}
                 on_update_doc_query=${on_update_doc_query}
                 on_focus_neighbor=${on_focus_neighbor}
+                client=${client}
                 cell_id=${cell_id}
                 notebook_id=${notebook_id}
             />`}
             <${RunArea}
                 onClick=${() => {
                     if (running || queued) {
-                        pluto_actions.interrupt_remote(cell_id)
+                        requests.interrupt_remote(cell_id)
                     } else {
-                        let cell_to_run = selected ? selected_cells : [cell_id]
-                        pluto_actions.set_and_run_multiple(cell_to_run)
+                        const friends = selected_friends(cell_id)
+
+                        if (friends.length == 1) {
+                            requests.change_remote_cell(cell_id, local_code.body)
+                        } else {
+                            requests.set_and_run_multiple(friends)
+                        }
                     }
                 }}
                 runtime=${localTimeRunning || runtime}
             />
             <button
                 onClick=${() => {
-                    pluto_actions.add_remote_cell(cell_id, "after")
+                    requests.add_remote_cell(cell_id, "after")
                 }}
                 class="add_cell after"
                 title="Add cell"

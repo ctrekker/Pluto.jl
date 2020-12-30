@@ -1,13 +1,11 @@
-import { html, useState, useRef, useLayoutEffect, useEffect, useMemo, useContext } from "../imports/Preact.js"
+import { html, useState, useRef, useLayoutEffect, useEffect, useMemo } from "../imports/Preact.js"
 import immer from "../imports/immer.js"
 import observablehq from "../common/SetupCellEnvironment.js"
 import { cl } from "../common/ClassTable.js"
 
 import { RawHTMLContainer, highlight_julia } from "./CellOutput.js"
-import { PlutoContext } from "../common/PlutoContext.js"
 
-export let LiveDocs = ({ desired_doc_query, on_update_doc_query, notebook }) => {
-    let pluto_actions = useContext(PlutoContext)
+export let LiveDocs = ({ desired_doc_query, client, on_update_doc_query, notebook }) => {
     let container_ref = useRef()
     let live_doc_search_ref = useRef()
     let [state, set_state] = useState({
@@ -69,7 +67,7 @@ export let LiveDocs = ({ desired_doc_query, on_update_doc_query, notebook }) => 
         })
         Promise.race([
             observablehq.Promises.delay(2000, false),
-            pluto_actions.send("docs", { query: new_query.replace(/^\?/, "") }, { notebook_id: notebook.notebook_id }).then((u) => {
+            client.send("docs", { query: new_query.replace(/^\?/, "") }, { notebook_id: notebook.notebook_id }).then((u) => {
                 if (u.message.status === "⌛") {
                     return false
                 }

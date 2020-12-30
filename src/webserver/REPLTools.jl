@@ -2,16 +2,12 @@ import FuzzyCompletions: complete_path, completion_text, score
 import Distributed
 using Markdown
 
-###
-# RESPONSES FOR AUTOCOMPLETE & DOCS
-###
-
 function format_path_completion(completion)
     replace(replace(completion_text(completion), "\\ " => " "), "\\\\" => "\\")
 end
 
-responses[:completepath] = function response_completepath(🙋::ClientRequest)
-    path = 🙋.body["query"]
+responses[:completepath] = (session::ServerSession, body, notebook = nothing; initiator::Union{Initiator,Missing}=missing) -> begin
+    path = body["query"]
     pos = lastindex(path)
 
     results, loc, found = complete_path(path, pos)
@@ -52,17 +48,16 @@ responses[:completepath] = function response_completepath(🙋::ClientRequest)
             :start => start_utf8 - 1, # 1-based index (julia) to 0-based index (js)
             :stop => stop_utf8 - 1, # idem
             :results => formatted[perm]
-            ), 🙋.notebook, nothing, 🙋.initiator)
+            ), notebook, nothing, initiator)
 
-    putclientupdates!(🙋.session, 🙋.initiator, msg)
+    putclientupdates!(session, initiator, msg)
 end
 
-responses[:complete] = function response_complete(🙋::ClientRequest)
-    require_notebook(🙋)
-    query = 🙋.body["query"]
+responses[:complete] = (session::ServerSession, body, notebook::Notebook; initiator::Union{Initiator,Missing}=missing) -> begin
+    query = body["query"]
     pos = lastindex(query) # the query is cut at the cursor position by the front-end, so the cursor position is just the last legal index
 
-    workspace = WorkspaceManager.get_workspace((🙋.session, 🙋.notebook))
+    workspace = WorkspaceManager.get_workspace((session, notebook))
 
     results_text, loc, found = if isready(workspace.dowork_token)
         # we don't use eval_format_fetch_in_workspace because we don't want the output to be string-formatted.
@@ -81,21 +76,20 @@ responses[:complete] = function response_complete(🙋::ClientRequest)
             :start => start_utf8 - 1, # 1-based index (julia) to 0-based index (js)
             :stop => stop_utf8 - 1, # idem
             :results => results_text
-            ), 🙋.notebook, nothing, 🙋.initiator)
+            ), notebook, nothing, initiator)
 
-    putclientupdates!(🙋.session, 🙋.initiator, msg)
+    putclientupdates!(session, initiator, msg)
 end
 
-responses[:docs] = function response_docs(🙋::ClientRequest)
-    require_notebook(🙋)
-    query = 🙋.body["query"]
+responses[:docs] = (session::ServerSession, body, notebook::Notebook; initiator::Union{Initiator,Missing}=missing) -> begin
+    query = body["query"]
 
     doc_html, status = if haskey(Docs.keywords, query |> Symbol)
         # available in Base, no need to ask worker
         doc_md = Docs.formatdoc(Docs.keywords[query |> Symbol])
         (repr(MIME("text/html"), doc_md), :👍)
     else
-        workspace = WorkspaceManager.get_workspace((🙋.session, 🙋.notebook))
+        workspace = WorkspaceManager.get_workspace((session, notebook))
 
         if isready(workspace.dowork_token)
             Distributed.remotecall_eval(Main, workspace.pid, :(PlutoRunner.doc_fetcher($query)))
@@ -108,7 +102,7 @@ responses[:docs] = function response_docs(🙋::ClientRequest)
         Dict(
             :status => status,
             :doc => doc_html,
-            ), 🙋.notebook, nothing, 🙋.initiator)
+            ), notebook, nothing, initiator)
 
-    putclientupdates!(🙋.session, 🙋.initiator, msg)
+    putclientupdates!(session, initiator, msg)
 end

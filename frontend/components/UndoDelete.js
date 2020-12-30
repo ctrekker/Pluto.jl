@@ -7,17 +7,15 @@ export const UndoDelete = ({ recently_deleted, on_click }) => {
     useEffect(() => {
         if (recently_deleted != null) {
             set_hidden(false)
-            const interval = setTimeout(() => {
+            const interval = setInterval(() => {
                 set_hidden(true)
-            }, 8000 * Math.pow(recently_deleted.length, 1 / 3))
+            }, 8000)
 
             return () => {
-                clearTimeout(interval)
+                clearInterval(interval)
             }
         }
     }, [recently_deleted])
-
-    let text = recently_deleted == null ? "" : recently_deleted.length === 1 ? "Cell deleted" : `${recently_deleted.length} cells deleted`
 
     return html`
         <nav
@@ -26,7 +24,7 @@ export const UndoDelete = ({ recently_deleted, on_click }) => {
                 hidden: hidden,
             })}
         >
-            ${text} (<a
+            Cell deleted (<a
                 href="#"
                 onClick=${(e) => {
                     e.preventDefault()

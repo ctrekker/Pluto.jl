@@ -59,7 +59,7 @@ export const writeSingleLineInPlutoInput = async (page, plutoInputSelector, text
     return page.waitFor((plutoInputSelector, text) => {
         const codeMirrorLine = document.querySelector(`${plutoInputSelector} .CodeMirror-line`)
         return codeMirrorLine !== null && codeMirrorLine.textContent.endsWith(text)
-    }, {polling: 100}, plutoInputSelector, text)
+    }, {}, plutoInputSelector, text)
 }
 
 export const keyboardPressInPlutoInput = async (page, plutoInputSelector, key) => {
@@ -67,7 +67,6 @@ export const keyboardPressInPlutoInput = async (page, plutoInputSelector, key) =
     await page.focus(`${plutoInputSelector} textarea`)
     await page.waitFor(500)
     await page.keyboard.press(key)
-    await page.waitFor(500)
     // Wait for CodeMirror to process the input and display the text
     return waitForContentToChange(page, `${plutoInputSelector} .CodeMirror-line`, currentLineText)
 }
