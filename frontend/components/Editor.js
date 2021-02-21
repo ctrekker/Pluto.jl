@@ -189,7 +189,7 @@ export class Editor extends Component {
         }
 
         this.setStatePromise = (fn) => new Promise((r) => this.setState(fn, r))
-        this.saveIndicatorLabels = ['Saved ✓', 'Saving...', 'Error saving ✕']
+        this.saveIndicatorLabels = ['Saved ✓', 'Saving...', 'Error saving ✕', ' Unsaved ⚠']
 
         // statistics that are accumulated over time
         this.counter_statistics = create_counter_statistics()
@@ -513,7 +513,9 @@ export class Editor extends Component {
                                     const medium_update = () => {
                                         this.setState({ save_status: this.state.save_medium.status() })
                                     };
-                                    if(external_nb) {
+                                    if(external_nb && false /* disable recovery of notebook file handles */) {
+                                        console.log('recovered external notebook')
+                                        console.log(external_nb);
                                         const recovered_medium = new Mediums[external_nb['type']](...external_nb['args'])
                                         recovered_medium.onUpdate(medium_update)
                                         this.setState({ save_medium: recovered_medium })
@@ -1145,6 +1147,8 @@ export class Editor extends Component {
                 ? `./notebookfile?id=${this.state.notebook.notebook_id}`
                 : `${this.state.binder_session_url}notebookfile?id=${this.state.notebook.notebook_id}&token=${this.state.binder_session_token}`
 
+        if(this.state.save_medium) this.state.save_medium.setExportUrl(notebook_export_url);
+
         return html`
             <${PlutoContext.Provider} value=${this.actions}>
                 <${PlutoBondsContext.Provider} value=${this.state.notebook.bonds}>
@@ -1159,10 +1163,10 @@ export class Editor extends Component {
                         />
                         <loading-bar style=${`width: ${100 * this.state.binder_phase}vw`}></loading-bar>
                         <div id="binder_spinners">
-                    <binder-spinner id="ring_1"></binder-spinner>
-                    <binder-spinner id="ring_2"></binder-spinner>
-                    <binder-spinner id="ring_3"></binder-spinner>
-                    </div>
+                            <binder-spinner id="ring_1"></binder-spinner>
+                            <binder-spinner id="ring_2"></binder-spinner>
+                            <binder-spinner id="ring_3"></binder-spinner>
+                        </div>
 
                         <nav id="at_the_top">
                             <a href=${
@@ -1173,22 +1177,25 @@ export class Editor extends Component {
                                 <h1><img id="logo-big" src=${url_logo_big} alt="Pluto.jl" /><img id="logo-small" src=${url_logo_small} /></h1>
                             </a>
                             
-                            ${this.state.save_medium && this.state.save_medium.firstSave && html`
-                                <div class="file-permissions-popover">
-                                    <span class="arrow-up"/>
-                                    <div>
-                                        <span>Allow Pluto.jl to edit this file?</span>
-                                        <div>
-                                            <button class="pluto-styled-button" onClick=${() => this.state.save_medium.save()}>Allow</button>
-                                            <button class="pluto-styled-button-secondary" onClick=${() => window.location.href = '/'}>Deny</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `}
-                            
                             ${
                                 this.state.binder_phase === BinderPhase.ready
-                                    ? html`<pluto-filepicker><a href=${notebook_export_url} target="_blank">Save notebook...</a></pluto-filepicker>`
+                                    ? html`<pluto-filepicker>
+                                        ${ this.state.save_medium ? 
+                                            html`
+                                                <button class="save-button" onclick=${() => {
+                                                    this.state.save_medium.saveAfterSelected = true;
+                                                    this.state.save_medium._openSystemDialog();
+                                                }}>Save notebook...</button>
+                                            `
+                                            : html `
+                                                <a href=${notebook_export_url} target="_blank">Save notebook...</a>
+                                            `
+                                        }
+                                    </pluto-filepicker>
+                                    <div id="saveIndicator">
+                                        ${ this.state.save_medium && html`<span>${this.saveIndicatorLabels[save_status]}</span>` }
+                                    </div>
+                                    `
                                     : html`<${FilePicker}
                                           client=${this.client}
                                           medium=${this.state.save_medium}
@@ -1202,12 +1209,6 @@ export class Editor extends Component {
                                           button_label=${this.state.notebook.in_temp_dir ? "Choose" : "Move"}
                                       />`
                             }
-
-                            ${ this.state.save_medium && html`
-                                <div id="saveIndicator">
-                                    <span>${this.saveIndicatorLabels[save_status]}</span>
-                                </div>
-                            `}
                             
                             <button class="toggle_export" title="Export..." onClick=${() => {
                                 this.setState({ export_menu_open: !export_menu_open })

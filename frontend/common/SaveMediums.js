@@ -1,13 +1,15 @@
 export const SaveStatuses = {
     IDLE: 0,
     SAVING: 1,
-    ERROR: 2
+    ERROR: 2,
+    UNSAVED: 3
 }
 
 export class SaveMedium {
     constructor() {
         this.updateListeners = [];
         this.saveTimeout = null;
+        this.exportUrl = "notebookfile" + window.location.search;
     }
 
     getPath() {}
@@ -40,8 +42,11 @@ export class SaveMedium {
             this.saveTimeout = setTimeout(handleSave, 1000)
         }
     }
+    setExportUrl(url) {
+        this.exportUrl = url;
+    }
     getNotebookContent() {
-        return fetch("notebookfile" + window.location.search).then(res => res.text())
+        return fetch(this.exportUrl).then(res => res.text());
     }
 }
 SaveMedium.autocomplete = async (oldLine, cursor, options) => {
@@ -57,14 +62,11 @@ export class BrowserLocalSaveMedium extends SaveMedium {
     constructor(path, extras) {
         super();
 
-        this.saveStatus = SaveStatuses.IDLE;
+        this.saveStatus = SaveStatuses.UNSAVED;
 
         this.fileHandle = extras ? extras : null;
         if(this.fileHandle) {
             this.firstSave = true;
-        }
-        else {
-            this._openSystemDialog()
         }
     }
 
@@ -100,7 +102,7 @@ export class BrowserLocalSaveMedium extends SaveMedium {
         }
         else {
             this.saveAfterSelected = true
-            this.saveStatus = SaveStatuses.IDLE;
+            this.saveStatus = SaveStatuses.UNSAVED;
             this.update();
         }
     }

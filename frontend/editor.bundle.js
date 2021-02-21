@@ -3878,6 +3878,281 @@ const deselect = (cm)=>{
         scroll: false
     });
 };
+const save_medium_type = (sm)=>sm ? sm.constructor.name : 'local'
+;
+const SaveStatuses = {
+    IDLE: 0,
+    SAVING: 1,
+    ERROR: 2,
+    UNSAVED: 3
+};
+class SaveMedium {
+    constructor(){
+        this.updateListeners = [];
+        this.saveTimeout = null;
+        this.exportUrl = "notebookfile" + window.location.search;
+    }
+    getPath() {
+    }
+    getExtras() {
+        return {
+        };
+    }
+    moveTo() {
+    }
+    save() {
+    }
+    load() {
+    }
+    status() {
+    }
+    onUpdate(listener) {
+        this.updateListeners.push(listener);
+    }
+    update() {
+        for (let listener of this.updateListeners){
+            listener();
+        }
+    }
+    scheduleSave() {
+        if (this.saveTimeout === null) {
+            const handleSave = ()=>{
+                this.save();
+                this.saveTimeout = null;
+            };
+            handleSave.bind(this);
+            this.saveStatus = SaveStatuses.SAVING;
+            this.update();
+            this.saveTimeout = setTimeout(handleSave, 1000);
+        }
+    }
+    setExportUrl(url) {
+        this.exportUrl = url;
+    }
+    getNotebookContent() {
+        return fetch(this.exportUrl).then((res)=>res.text()
+        );
+    }
+}
+SaveMedium.autocomplete = async (oldLine, cursor, options)=>{
+    throw new Error('Autocomplete was not implemented by this save medium!');
+};
+SaveMedium.authenticated = async ()=>{
+};
+SaveMedium.displayName = 'IF YOU SEE THIS YOU FORGOT TO SET DISPLAY NAME ON YOUR MEDIUM';
+SaveMedium.displayIcon = '';
+class BrowserLocalSaveMedium extends SaveMedium {
+    constructor(path, extras){
+        super();
+        this.saveStatus = SaveStatuses.UNSAVED;
+        this.fileHandle = extras ? extras : null;
+        if (this.fileHandle) {
+            this.firstSave = true;
+        }
+    }
+    getPath() {
+        return this.fileHandle?.name || 'Save notebook...';
+    }
+    getExtras() {
+        if (this.fileHandle) return this.fileHandle;
+        return {
+        };
+    }
+    async moveTo() {
+        this.saveAfterSelected = true;
+        await this._openSystemDialog();
+        return true;
+    }
+    async save() {
+        const content = await super.getNotebookContent();
+        if (this.fileHandle) {
+            try {
+                const stream = await this.fileHandle.createWritable();
+                await stream.write(content);
+                await stream.close();
+                this.firstSave = false;
+                this.saveStatus = SaveStatuses.IDLE;
+                this.update();
+            } catch (e) {
+                this.saveStatus = SaveStatuses.ERROR;
+                this.update();
+                throw e;
+            }
+        } else {
+            this.saveAfterSelected = true;
+            this.saveStatus = SaveStatuses.UNSAVED;
+            this.update();
+        }
+    }
+    async load() {
+        if (this.fileHandle) {
+            const file = await this.fileHandle.getFile();
+            return await file.text();
+        } else {
+            throw new Error('A browser-saved notebook cannot be loaded without an initialized FileHandle');
+        }
+    }
+    status() {
+        return this.saveStatus;
+    }
+    async _openSystemDialog() {
+        try {
+            const options = {
+                types: [
+                    {
+                        description: 'Pluto Notebook (.jl)',
+                        accept: {
+                            'application/julia': [
+                                '.jl'
+                            ]
+                        }
+                    }
+                ]
+            };
+            this.fileHandle = await window.showSaveFilePicker(options);
+            if (this.saveAfterSelected) {
+                this.saveAfterSelected = false;
+                await this.save();
+            }
+        } catch (e) {
+        }
+    }
+}
+BrowserLocalSaveMedium.autocomplete = (oldLine, cursor, options)=>{
+    const styledResults = [];
+    if (options.suggest_new_file != null) {
+        const nb_name = oldLine.trim() === '' ? 'notebook' : oldLine.trim().replace(/(\.|\.j|\.jl)$/g, '');
+        const nb_file = nb_name + '.jl';
+        styledResults.push({
+            text: nb_file,
+            displayText: `${nb_file} (new)`,
+            className: 'file new'
+        });
+    }
+    return {
+        list: oldLine.endsWith('.jl') ? [] : styledResults,
+        from: CodeMirror.Pos(cursor.line, 0),
+        to: CodeMirror.Pos(cursor.line, oldLine.length)
+    };
+};
+BrowserLocalSaveMedium.authenticated = ()=>true
+;
+BrowserLocalSaveMedium.displayName = 'Client-side Local';
+BrowserLocalSaveMedium.displayIcon = '/img/mark-github.svg';
+let idb = null;
+const request_idb = ()=>{
+    return new Promise((resolve, reject)=>{
+        if (idb) {
+            resolve(idb);
+            return;
+        }
+        const request = indexedDB.open('ExternalNotebooks');
+        request.onerror = reject;
+        request.onsuccess = (e2)=>{
+            idb = e2.target.result;
+            resolve(idb);
+        };
+        request.onupgradeneeded = (e2)=>{
+            const db = e2.target.result;
+            const store = db.createObjectStore('notebooks', {
+                keyPath: 'path'
+            });
+            store.transaction.oncomplete = (e10)=>{
+                console.log('Created IndexedDB for External Notebooks');
+            };
+        };
+    });
+};
+const update_external_notebooks = (notebook_path, save_medium, old_path = null)=>{
+    return new Promise((resolve, reject)=>{
+        const medium_type = save_medium.constructor.name;
+        const medium_args = [
+            save_medium.getPath(),
+            save_medium.getExtras()
+        ];
+        request_idb().then((db)=>{
+            const store = db.transaction('notebooks', 'readwrite').objectStore('notebooks');
+            if (old_path) {
+                const delOldReq = store.delete(old_path);
+                delOldReq.onerror = (e2)=>{
+                    console.warn('Failed to remove old_path external notebook entry');
+                    console.log(e2);
+                };
+                delOldReq.onsuccess = (e2)=>{
+                };
+            }
+            const nbReq = store.get(notebook_path);
+            nbReq.onerror = (e2)=>reject
+            ;
+            nbReq.onsuccess = (e2)=>{
+                const data = e2.target.result;
+                if (data) {
+                    data.type = medium_type;
+                    data.args = medium_args;
+                    const nbReqUpdate = store.put(data);
+                    nbReqUpdate.onerror = reject;
+                    nbReqUpdate.onsuccess = resolve;
+                } else {
+                    const nbReqAdd = store.add({
+                        path: notebook_path,
+                        type: medium_type,
+                        args: medium_args
+                    });
+                    nbReqAdd.onerror = reject;
+                    nbReqAdd.onsuccess = resolve;
+                }
+            };
+        });
+    });
+};
+const update_external_notebooks1 = update_external_notebooks;
+const delete_external_notebook = (notebook_path)=>{
+    return new Promise((resolve, reject)=>{
+        request_idb().then((db)=>{
+            const store = db.transaction('notebooks', 'readwrite').objectStore('notebooks');
+            const delOldReq = store.delete(notebook_path);
+            delOldReq.onerror = reject;
+            delOldReq.onsuccess = resolve;
+        });
+    });
+};
+const get_external_notebook = (notebook_path)=>{
+    return new Promise((resolve, reject)=>{
+        request_idb().then((db)=>{
+            const store = db.transaction('notebooks', 'readwrite').objectStore('notebooks');
+            const nbReq = store.get(notebook_path);
+            nbReq.onerror = (e2)=>{
+                reject(e2);
+            };
+            nbReq.onsuccess = (e2)=>{
+                resolve(e2.target.result);
+            };
+        }).catch(reject);
+    });
+};
+const get_all_external_notebooks = ()=>{
+    return new Promise((resolve, reject)=>{
+        request_idb().then((db)=>{
+            const store = db.transaction('notebooks').objectStore('notebooks');
+            const out_obj = {
+            };
+            store.openCursor().onsuccess = (e2)=>{
+                const cursor = e2.target.result;
+                if (cursor) {
+                    out_obj[cursor.key] = cursor.value;
+                    cursor.continue();
+                } else {
+                    resolve(out_obj);
+                }
+            };
+        }).catch(reject);
+    });
+};
+const Mediums = {
+    BrowserLocalSaveMedium
+};
+const Mediums1 = Mediums;
+const Mediums2 = Mediums;
 let is_mac_keyboard = /Mac/.test(navigator.platform);
 let ctrl_or_cmd_name = is_mac_keyboard ? "Cmd" : "Ctrl";
 let has_ctrl_or_cmd_pressed = (event)=>event.ctrlKey || is_mac_keyboard && event.metaKey
@@ -3898,11 +4173,35 @@ let in_textarea_or_input = ()=>{
     const { tagName  } = document.activeElement;
     return tagName === "INPUT" || tagName === "TEXTAREA";
 };
+const te1 = new TextEncoder();
+const td = new TextDecoder();
+const utf8index_to_ut16index = (str, index_utf8)=>td.decode(te1.encode(str).slice(0, index_utf8)).length
+;
+const splice_utf8 = (original, startindex_utf8, endindex_utf8, replacement)=>{
+    const original_enc = te1.encode(original);
+    const replacement_enc = te1.encode(replacement);
+    const result_enc = new Uint8Array(original_enc.length + replacement_enc.length - (endindex_utf8 - startindex_utf8));
+    result_enc.set(original_enc.slice(0, startindex_utf8), 0);
+    result_enc.set(replacement_enc, startindex_utf8);
+    result_enc.set(original_enc.slice(endindex_utf8), startindex_utf8 + replacement_enc.length);
+    return td.decode(result_enc);
+};
+const slice_utf8 = (original, startindex_utf8, endindex_utf8)=>{
+    const original_enc = te1.encode(original);
+    return td.decode(original_enc.slice(startindex_utf8, endindex_utf8));
+};
+const slice_utf81 = slice_utf8;
+console.assert(splice_utf8("e é 🐶 is a dog", 5, 9, "hannes ❤") === "e é hannes ❤ is a dog");
+console.assert(slice_utf8("e é 🐶 is a dog", 5, 9) === "🐶");
 class FilePicker extends d4 {
-    constructor(){
+    constructor(props){
         super();
         this.forced_value = "";
         this.cm = null;
+        this.state = {
+            current_save_medium: save_medium_type(props.medium)
+        };
+        this.pathhints = this.pathhints.bind(this);
         this.suggest_not_tmp = ()=>{
             const suggest = this.props.suggest_new_file;
             if (suggest != null && this.cm.getValue() === "") {
@@ -3922,29 +4221,58 @@ class FilePicker extends d4 {
         };
         this.on_submit = async ()=>{
             const my_val = this.cm.getValue();
-            if (my_val === this.forced_value) {
-                this.suggest_not_tmp();
-                return;
+            if (this.props.native && my_val.length === 0) {
+                const [fileHandle] = await window.showOpenFilePicker();
+                this.props.on_submit('BrowserLocalSaveMedium', null, fileHandle);
+            } else {
+                if (my_val === this.forced_value && this.state.current_save_medium !== 'BrowserLocalSaveMedium') {
+                    this.suggest_not_tmp();
+                    return;
+                }
+                try {
+                    await this.props.on_submit(this.state.current_save_medium, this.cm.getValue(), null);
+                    this.cm.blur();
+                } catch (error) {
+                    console.log(error);
+                    this.cm.setValue(this.props.value);
+                    deselect(this.cm);
+                }
             }
-            try {
-                await this.props.on_submit(this.cm.getValue());
-                this.cm.blur();
-            } catch (error) {
-                this.cm.setValue(this.props.value);
-                deselect(this.cm);
+        };
+        this.on_fs_change = (e2)=>{
+            const save_medium = e2.target.value;
+            this.setState({
+                current_save_medium: save_medium
+            });
+            if (save_medium !== 'local' && !Mediums2[save_medium].authenticated()) {
+                const l5 = window.location;
+                const redirect_url = `${l5.protocol}//${l5.host}/auth_github`;
+                localStorage.setItem('post auth redirect', window.location.href);
+                window.open(`http://auth.pluto.cot.llc/github?redirect_url=${encodeURIComponent(redirect_url)}`, '_blank', 'width=640,height=480');
+            } else {
+                this.cm.setValue('');
+                this.cm.focus();
             }
         };
     }
-    componentDidUpdate() {
+    componentDidUpdate(old_props) {
         if (this.forced_value != this.props.value) {
-            this.cm.setValue(this.props.value);
+            this.cm.setValue(this.props.value || '');
             deselect(this.cm);
             this.forced_value = this.props.value;
+        }
+        if (old_props.medium !== this.props.medium) {
+            const sm_type = save_medium_type(this.props.medium);
+            this.cm.setOption('readOnly', this.is_browser_medium(sm_type));
+            this.cm.setOption('cursorBlinkRate', this.is_browser_medium(sm_type) ? -1 : undefined);
+            this.setState({
+                current_save_medium: sm_type
+            });
         }
     }
     componentDidMount() {
         this.cm = window.CodeMirror((el)=>{
-            this.base.insertBefore(el, this.base.firstElementChild);
+            this.base.insertBefore(el, this.base.getElementsByTagName('button')[0]);
         }, {
             value: "",
             lineNumbers: false,
@@ -3955,12 +4283,14 @@ class FilePicker extends d4 {
             indentWithTabs: true,
             indentUnit: 4,
             hintOptions: {
-                hint: pathhints,
+                hint: this.pathhints,
                 completeSingle: false,
                 suggest_new_file: this.props.suggest_new_file,
                 client: this.props.client
             },
-            scrollbarStyle: "null"
+            scrollbarStyle: "null",
+            readOnly: this.is_browser_medium(),
+            cursorBlinkRate: this.is_browser_medium() ? -1 : undefined
         });
         this.cm.setOption("extraKeys", map_cmd_to_ctrl_on_mac({
             "Ctrl-Enter": this.on_submit,
@@ -3997,7 +4327,7 @@ class FilePicker extends d4 {
         });
     }
     render() {
-        return re`\n            <pluto-filepicker>\n                <button onClick=${this.on_submit}>${this.props.button_label}</button>\n            </pluto-filepicker>\n        `;
+        return re`\n            <pluto-filepicker>\n                <button onClick=${this.on_submit}>${this.is_browser_medium() ? 'Save As' : this.props.button_label}</button>\n            </pluto-filepicker>\n        `;
     }
     request_path_completions() {
         const cursor = this.cm.getCursor();
@@ -4008,74 +4338,57 @@ class FilePicker extends d4 {
             }
         }
     }
-}
-const te1 = new TextEncoder();
-const td = new TextDecoder();
-const utf8index_to_ut16index = (str, index_utf8)=>td.decode(te1.encode(str).slice(0, index_utf8)).length
-;
-const splice_utf8 = (original, startindex_utf8, endindex_utf8, replacement)=>{
-    const original_enc = te1.encode(original);
-    const replacement_enc = te1.encode(replacement);
-    const result_enc = new Uint8Array(original_enc.length + replacement_enc.length - (endindex_utf8 - startindex_utf8));
-    result_enc.set(original_enc.slice(0, startindex_utf8), 0);
-    result_enc.set(replacement_enc, startindex_utf8);
-    result_enc.set(original_enc.slice(endindex_utf8), startindex_utf8 + replacement_enc.length);
-    return td.decode(result_enc);
-};
-const slice_utf8 = (original, startindex_utf8, endindex_utf8)=>{
-    const original_enc = te1.encode(original);
-    return td.decode(original_enc.slice(startindex_utf8, endindex_utf8));
-};
-const slice_utf81 = slice_utf8;
-console.assert(splice_utf8("e é 🐶 is a dog", 5, 9, "hannes ❤") === "e é hannes ❤ is a dog");
-console.assert(slice_utf8("e é 🐶 is a dog", 5, 9) === "🐶");
-const pathhints = (cm, options)=>{
-    const cursor = cm.getCursor();
-    const oldLine = cm.getLine(cursor.line);
-    return options.client.send("completepath", {
-        query: oldLine
-    }).then((update)=>{
-        const queryFileName = oldLine.split("/").pop().split("\\").pop();
-        const results = update.message.results;
-        const from = utf8index_to_ut16index(oldLine, update.message.start);
-        const to = utf8index_to_ut16index(oldLine, update.message.stop);
-        if (results.length >= 1 && results[0] == queryFileName) {
-            return null;
-        }
-        var styledResults = results.map((r2)=>({
-                text: r2,
-                className: r2.endsWith("/") || r2.endsWith("\\") ? "dir" : "file"
-            })
-        );
-        if (options.suggest_new_file != null) {
-            for(var initLength = 3; initLength >= 0; initLength--){
-                const init = ".jl".substring(0, initLength);
-                if (queryFileName.endsWith(init)) {
-                    var suggestedFileName = queryFileName + ".jl".substring(initLength);
-                    if (suggestedFileName == ".jl") {
-                        suggestedFileName = "notebook.jl";
+    is_browser_medium(sm_type) {
+        return (sm_type || this.state.current_save_medium) === 'BrowserLocalSaveMedium';
+    }
+    pathhints(cm, options) {
+        const cursor = cm.getCursor();
+        const oldLine = cm.getLine(cursor.line);
+        return options.client.send("completepath", {
+            query: oldLine
+        }).then((update)=>{
+            const queryFileName = oldLine.split("/").pop().split("\\").pop();
+            const results = update.message.results;
+            const from = utf8index_to_ut16index(oldLine, update.message.start);
+            const to = utf8index_to_ut16index(oldLine, update.message.stop);
+            if (results.length >= 1 && results[0] == queryFileName) {
+                return null;
+            }
+            var styledResults = results.map((r2)=>({
+                    text: r2,
+                    className: r2.endsWith("/") || r2.endsWith("\\") ? "dir" : "file"
+                })
+            );
+            if (options.suggest_new_file != null) {
+                for(var initLength = 3; initLength >= 0; initLength--){
+                    const init = ".jl".substring(0, initLength);
+                    if (queryFileName.endsWith(init)) {
+                        var suggestedFileName = queryFileName + ".jl".substring(initLength);
+                        if (suggestedFileName == ".jl") {
+                            suggestedFileName = "notebook.jl";
+                        }
+                        if (initLength == 3) {
+                            return null;
+                        }
+                        if (!results.includes(suggestedFileName)) {
+                            styledResults.push({
+                                text: suggestedFileName,
+                                displayText: suggestedFileName + " (new)",
+                                className: "file new"
+                            });
+                        }
+                        break;
                     }
-                    if (initLength == 3) {
-                        return null;
-                    }
-                    if (!results.includes(suggestedFileName)) {
-                        styledResults.push({
-                            text: suggestedFileName,
-                            displayText: suggestedFileName + " (new)",
-                            className: "file new"
-                        });
-                    }
-                    break;
                 }
             }
-        }
-        return {
-            list: styledResults,
-            from: CodeMirror.Pos(cursor.line, from),
-            to: CodeMirror.Pos(cursor.line, to)
-        };
-    });
-};
+            return {
+                list: styledResults,
+                from: CodeMirror.Pos(cursor.line, from),
+                to: CodeMirror.Pos(cursor.line, to)
+            };
+        });
+    }
+}
 const CodeMirror = window.CodeMirror;
 const clear_selection = (cm)=>{
     const c8 = cm.getCursor();
@@ -6399,14 +6712,20 @@ class Editor extends d4 {
                 up: false,
                 down: false
             },
-            export_menu_open: false,
             last_created_cell: null,
             selected_cells: [],
-            update_is_ongoing: false
+            update_is_ongoing: false,
+            save_medium: null
         };
         this.setStatePromise = (fn1)=>new Promise((r2)=>this.setState(fn1, r2)
             )
         ;
+        this.saveIndicatorLabels = [
+            'Saved ✓',
+            'Saving...',
+            'Error saving ✕',
+            ' Unsaved ⚠'
+        ];
         this.counter_statistics = create_counter_statistics1();
         this.actions = {
             send: (...args)=>this.client.send(...args)
@@ -6705,6 +7024,33 @@ class Editor extends d4 {
                             );
                         }
                         state.notebook = new_notebook;
+                        if (!this.state.save_medium) {
+                            get_external_notebook(new_notebook.path).then((external_nb)=>{
+                                const medium_update = ()=>{
+                                    this.setState({
+                                        save_status: this.state.save_medium.status()
+                                    });
+                                };
+                                if (external_nb && false) {
+                                    console.log('recovered external notebook');
+                                    console.log(external_nb);
+                                    const recovered_medium = new Mediums[external_nb['type']](...external_nb['args']);
+                                    recovered_medium.onUpdate(medium_update);
+                                    this.setState({
+                                        save_medium: recovered_medium
+                                    });
+                                } else {
+                                    if (window.showSaveFilePicker) {
+                                        const browser_medium = new BrowserLocalSaveMedium();
+                                        browser_medium.onUpdate(medium_update);
+                                        this.setState({
+                                            save_medium: browser_medium
+                                        });
+                                        update_external_notebooks(new_notebook.path, browser_medium).catch(console.log);
+                                    }
+                                }
+                            }).catch(console.log);
+                        }
                     }), resolve);
                 } else {
                     resolve();
@@ -6713,6 +7059,9 @@ class Editor extends d4 {
         ;
         const on_update = (update, by_me)=>{
             if (this.state.notebook.notebook_id === update.notebook_id) {
+                if (this.state.save_medium) {
+                    this.state.save_medium.scheduleSave();
+                }
                 const message = update.message;
                 switch(update.type){
                     case "notebook_diff":
@@ -7006,31 +7355,58 @@ class Editor extends d4 {
             }
         };
         this.update_notebook = update_notebook;
-        this.submit_file_change = async (new_path, reset_cm_value)=>{
-            const old_path = this.state.notebook.path;
-            if (old_path === new_path) {
-                return;
-            }
-            if (!this.state.notebook.in_temp_dir) {
-                if (!confirm("Are you sure? Will move from\n\n" + old_path + "\n\nto\n\n" + new_path)) {
-                    throw new Error("Declined by user");
+        this.submit_file_change = async (save_medium, new_path, extras1, reset_cm_value)=>{
+            if (save_medium === 'local') {
+                const old_path = this.state.notebook.path;
+                if (old_path === new_path) {
+                    return;
                 }
-            }
-            this.setState({
-                moving_file: true
-            });
-            try {
-                await update_notebook((notebook)=>{
-                    notebook.in_temp_dir = false;
-                    notebook.path = new_path;
-                });
-                document.activeElement?.blur();
-            } catch (error) {
-                alert("Failed to move file:\n\n" + error.message);
-            } finally{
+                if (!this.state.notebook.in_temp_dir) {
+                    if (!confirm("Are you sure? Will move from\n\n" + old_path + "\n\nto\n\n" + new_path)) {
+                        throw new Error("Declined by user");
+                    }
+                }
                 this.setState({
-                    moving_file: false
+                    moving_file: true
                 });
+                try {
+                    await update_notebook((notebook)=>{
+                        notebook.in_temp_dir = false;
+                        notebook.path = new_path;
+                    });
+                    document.activeElement?.blur();
+                } catch (error) {
+                    alert("Failed to move file:\n\n" + error.message);
+                } finally{
+                    this.setState({
+                        moving_file: false
+                    });
+                }
+            } else if (Object.values(Mediums1).map((m3)=>m3.name
+            ).includes(save_medium)) {
+                let sm = null;
+                if (!this.state.save_medium) {
+                    sm = new Mediums1[save_medium](new_path, extras1);
+                    sm.save();
+                    this.setState({
+                        save_medium: sm
+                    });
+                } else {
+                    this.setState({
+                        loading: true,
+                        tmp_save_path: new_path
+                    });
+                    sm = this.state.save_medium;
+                    await this.state.save_medium.moveTo(new_path);
+                    this.setState({
+                        save_medium: this.state.save_medium,
+                        loading: false
+                    });
+                }
+                document.activeElement.blur();
+                await update_external_notebooks1(this.state.notebook.path, sm);
+            } else {
+                alert(`Saving to ${save_medium} is not yet supported`);
             }
         };
         this.delete_selected = (verb)=>{
@@ -7131,9 +7507,14 @@ class Editor extends d4 {
     }
     componentDidUpdate(old_props, old_state) {
         window.editor_state = this.state;
-        document.title = "🎈 " + this.state.notebook.shortpath + " ⚡ Pluto.jl ⚡";
+        const title_name = this.state.save_medium ? this.state.save_medium.getPath() : this.state.notebook.shortpath;
+        document.title = "🎈 " + title_name + " ⚡ Pluto.jl ⚡";
         if (old_state?.notebook?.path !== this.state.notebook.path) {
             update_stored_recent_notebooks(this.state.notebook.path, old_state?.notebook?.path);
+            if (this.state.save_medium) {
+                update_external_notebooks(this.state.notebook.path, this.state.save_medium, old_state?.notebook?.path).then(()=>{
+                }).catch(console.log);
+            }
         }
         const any_code_differs = this.state.notebook.cell_order.some((cell_id)=>this.state.cell_inputs_local[cell_id] != null && this.state.notebook.cell_inputs[cell_id].code !== this.state.cell_inputs_local[cell_id].code
         );
@@ -7166,15 +7547,20 @@ class Editor extends d4 {
         }
     }
     render() {
-        let { export_menu_open  } = this.state;
+        const { export_menu_open  } = this.state;
+        const save_status = this.state.save_medium?.status();
         const notebook_export_url = this.state.binder_session_url == null ? `./notebookfile?id=${this.state.notebook.notebook_id}` : `${this.state.binder_session_url}notebookfile?id=${this.state.notebook.notebook_id}&token=${this.state.binder_session_token}`;
+        if (this.state.save_medium) this.state.save_medium.setExportUrl(notebook_export_url);
         return re`\n            <${PlutoContext.Provider} value=${this.actions}>\n                <${PlutoBondsContext.Provider} value=${this.state.notebook.bonds}>\n                    <${Scroller} active=${this.state.scroller} />\n                    <header className=${export_menu_open ? "show_export" : ""}>\n                        <${ExportBanner}\n                            pluto_version=${this.client?.version_info?.pluto}\n                            notebook=${this.state.notebook}\n                            notebook_export_url=${notebook_export_url}\n                            open=${export_menu_open}\n                            onClose=${()=>this.setState({
                 export_menu_open: false
             })
-        }\n                        />\n                        <loading-bar style=${`width: ${100 * this.state.binder_phase}vw`}></loading-bar>\n                        <div id="binder_spinners">\n                    <binder-spinner id="ring_1"></binder-spinner>\n                    <binder-spinner id="ring_2"></binder-spinner>\n                    <binder-spinner id="ring_3"></binder-spinner>\n                    </div>\n\n                        <nav id="at_the_top">\n                            <a href=${this.state.static_preview || this.state.binder_phase != null ? `${this.state.binder_session_url}?token=${this.state.binder_session_token}` : "./"}>\n                                <h1><img id="logo-big" src=${url_logo_big} alt="Pluto.jl" /><img id="logo-small" src=${url_logo_small} /></h1>\n                            </a>\n                            ${this.state.binder_phase === BinderPhase.ready ? re`<pluto-filepicker><a href=${notebook_export_url} target="_blank">Save notebook...</a></pluto-filepicker>` : re`<${FilePicker}\n                                          client=${this.client}\n                                          value=${this.state.notebook.in_temp_dir ? "" : this.state.notebook.path}\n                                          on_submit=${this.submit_file_change}\n                                          suggest_new_file=${{
+        }\n                        />\n                        <loading-bar style=${`width: ${100 * this.state.binder_phase}vw`}></loading-bar>\n                        <div id="binder_spinners">\n                            <binder-spinner id="ring_1"></binder-spinner>\n                            <binder-spinner id="ring_2"></binder-spinner>\n                            <binder-spinner id="ring_3"></binder-spinner>\n                        </div>\n\n                        <nav id="at_the_top">\n                            <a href=${this.state.static_preview || this.state.binder_phase != null ? `${this.state.binder_session_url}?token=${this.state.binder_session_token}` : "./"}>\n                                <h1><img id="logo-big" src=${url_logo_big} alt="Pluto.jl" /><img id="logo-small" src=${url_logo_small} /></h1>\n                            </a>\n                            \n                            ${this.state.binder_phase === BinderPhase.ready ? re`<pluto-filepicker>\n                                        ${this.state.save_medium ? re`\n                                                <button class="save-button" onclick=${()=>{
+            this.state.save_medium.saveAfterSelected = true;
+            this.state.save_medium._openSystemDialog();
+        }}>Save notebook...</button>\n                                            ` : re`\n                                                <a href=${notebook_export_url} target="_blank">Save notebook...</a>\n                                            `}\n                                    </pluto-filepicker>\n                                    <div id="saveIndicator">\n                                        ${this.state.save_medium && re`<span>${this.saveIndicatorLabels[save_status]}</span>`}\n                                    </div>\n                                    ` : re`<${FilePicker}\n                                          client=${this.client}\n                                          medium=${this.state.save_medium}\n                                          value=${this.state.save_medium ? this.state.loading ? this.state.tmp_save_path || '' : this.state.save_medium.getPath() : this.state.notebook.in_temp_dir ? "" : this.state.notebook.path}\n                                          on_submit=${this.submit_file_change}\n                                          suggest_new_file=${{
             base: this.client.session_options == null ? "" : this.client.session_options.server.notebook_path_suggestion,
             name: this.state.notebook.shortpath
-        }}\n                                          placeholder="Save notebook..."\n                                          button_label=${this.state.notebook.in_temp_dir ? "Choose" : "Move"}\n                                      />`}\n                            \n                            \n                            <button class="toggle_export" title="Export..." onClick=${()=>{
+        }}\n                                          placeholder="Save notebook..."\n                                          button_label=${this.state.notebook.in_temp_dir ? "Choose" : "Move"}\n                                      />`}\n                            \n                            <button class="toggle_export" title="Export..." onClick=${()=>{
             this.setState({
                 export_menu_open: !export_menu_open
             });
@@ -7217,8 +7603,8 @@ const update_stored_recent_notebooks = (recent_path, also_delete = undefined)=>{
     const oldpaths = storedList;
     const newpaths = [
         recent_path
-    ].concat(oldpaths.filter((path)=>{
-        return path !== recent_path && path !== also_delete;
+    ].concat(oldpaths.filter((path1)=>{
+        return path1 !== recent_path && path1 !== also_delete;
     }));
     localStorage.setItem("recent notebooks", JSON.stringify(newpaths.slice(0, 50)));
 };

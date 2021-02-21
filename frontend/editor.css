@@ -1746,6 +1746,16 @@ body > nav#slide_controls > button.next > span::after {
     border-bottom: 14px solid #f2f2f2;
 }
 
+.save-button {
+    display: block !important;
+    opacity: 0.8 !important;
+    background: transparent;
+    color: black;
+    border: none;
+    font-size: 18px;
+    font-family: JuliaMono, monospace;
+}
+
 /* CODEMIRROR HINTS */
 
 .CodeMirror-hints {
