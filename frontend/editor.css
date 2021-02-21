@@ -467,6 +467,33 @@ body.static_preview button.toggle_export {
     display: none;
 }
 
+#gist_banner {
+    display: flex;
+    justify-content: center;
+    padding: 15px 0;
+    background-color: #0000000f;
+}
+#gist_banner_container {
+    margin: auto;   
+    display: flex;
+    width: 100%;
+    max-width: 1000px;
+}
+#gist_banner form {
+    display: flex;
+    margin-left: 10px;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+#gist_banner form > input {
+    min-width: 254px;
+    margin-bottom: 3px;
+    border-right: none;
+}
+#gist_banner_container button.gist_banner_close > span {
+    background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/close-outline.svg);
+}
+
 nav#at_the_top h1 {
     color: black;
     letter-spacing: 2px;
@@ -523,9 +550,6 @@ nav#at_the_top img#logo-small {
 }
 
 nav#at_the_top > pluto-filepicker {
-    width: 0px;
-    flex-grow: 1;
-
     display: flex;
     flex-direction: row;
 }
@@ -556,13 +580,16 @@ nav#at_the_top > pluto-filepicker button {
     cursor: pointer;
 }
 
-button.toggle_export {
+button.toggle_export, button.toggle_gist {
     border: none;
     background: none;
     cursor: pointer;
     opacity: 0.5;
 }
-button.toggle_export span {
+button.toggle_gist {
+    opacity: 0.2;
+}
+button.toggle_export span, button.toggle_gist span {
     display: block;
     content: " " !important;
     background-size: 25px 25px;
@@ -572,6 +599,9 @@ button.toggle_export span {
 
 nav#at_the_top button.toggle_export span {
     background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/shapes-outline.svg);
+}
+nav#at_the_top button.toggle_gist span {
+    background-image: url(/img/mark-github.svg);
 }
 aside#export button.toggle_export span {
     background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/close-outline.svg);
@@ -602,14 +632,33 @@ li.dir.CodeMirror-hint:before {
         border: 2px solid transparent;
         border-right: none;
         transition: border 0.15s ease-in-out;
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+    }
+    nav#at_the_top > pluto-filepicker > select {
+        border: 2px solid transparent;
+        border-right: none;
+        transition: border 0.15s ease-in-out;
+        width: 64px;
     }
     nav#at_the_top > pluto-filepicker button {
         opacity: 0;
         transition: opacity 0.15s ease-in-out;
     }
+    nav#at_the_top > pluto-filepicker select {
+        background-color: transparent;
+        font-family: "Roboto Mono", monospace;
+        border-top-left-radius: 3px;
+        border-bottom-left-radius: 3px;
+    }
     header:hover > nav#at_the_top > pluto-filepicker .CodeMirror,
     header:focus-within > nav#at_the_top > pluto-filepicker .CodeMirror {
         border: 2px solid #818181;
+        border-right: none;
+    }
+    header:hover > nav#at_the_top > pluto-filepicker > select,
+    header:focus-within > nav#at_the_top > pluto-filepicker > select {
+        border: 2px solid #b1b1b1;
         border-right: none;
     }
     header:hover > nav#at_the_top > pluto-filepicker button,
@@ -1527,18 +1576,20 @@ footer a {
     }
 }
 
-footer input {
+footer input, .pluto-styled-input {
     margin: 0px;
     border: 2px solid #818181;
     font-family: inherit;
     font-size: inherit;
     border-radius: 3px 0 0 3px;
     padding: 3px;
+}
+footer input {
     border-right: none;
 }
 
 body > header pluto-filepicker button,
-footer button {
+footer button, .pluto-styled-button {
     margin: 0px;
     background: #896c6c;
     border-radius: 0 3px 3px 0;
@@ -1549,12 +1600,36 @@ footer button {
     font-weight: 600;
     font-size: 0.75rem;
 }
+.pluto-styled-button {
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.pluto-styled-button-secondary {
+    margin: 0px;
+    background: white;
+    border-radius: 3px;
+    border: 1px solid lightgray;
+    color: black;
+    /* border: none; */
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
 
 #info {
     max-width: 9400px;
     margin: 0 auto;
     padding: 1rem;
     text-align: right;
+}
+
+#saveIndicator {
+    flex-grow: 1 !important;
+    text-align: right;
+    color: hsl(0, 0%, 55%);
+    padding-right: 15px;
 }
 
 /* UNDO DELETED CELL */
@@ -1640,6 +1715,35 @@ body > nav#slide_controls > button.prev > span::after {
 }
 body > nav#slide_controls > button.next > span::after {
     background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/arrow-forward-outline.svg);
+}
+
+.file-permissions-popover {
+    position: relative;
+    width:0;
+    height: 0;
+}
+.file-permissions-popover > div {
+    position: absolute;
+    top: 31px;
+    width: 300px;
+    background-color: #f2f2f2; 
+    padding: 10px;
+}
+.file-permissions-popover > div > div {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+    padding: 0 5px;
+}
+.file-permissions-popover > div > div > button {
+    margin: 0 5px;
+}
+.arrow-up {
+    width: 0; 
+    height: 0; 
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-bottom: 14px solid #f2f2f2;
 }
 
 /* CODEMIRROR HINTS */
