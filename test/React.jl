@@ -221,6 +221,21 @@ import Distributed
     end
 
     
+    @testset "Mixed usings and reactivity" begin
+        notebook = Notebook([
+            Cell("a; using Dates"),
+            Cell("isleapyear(2)"),
+            Cell("a = 3; using LinearAlgebra"),
+        ])
+
+        notebook.topology = Pluto.updated_topology(notebook.topology, notebook, notebook.cells)
+        topo_order = Pluto.topological_order(notebook, notebook.topology, notebook.cells)
+        run_order = indexin(topo_order.runnable, notebook.cells)
+
+        @test run_order == [3, 1, 2]
+    end
+
+    
     @testset "Multiple methods across cells" begin
         notebook = Notebook([
             Cell("a(x) = 1"),
@@ -981,11 +996,23 @@ import Distributed
             Cell("@__FILE__; eighteen = :(1 + 1)"),
             Cell("@__FILE__; eighteen"),
             Cell("eighteen"),
+
+            Cell("qb = quote value end"),
+            Cell("typeof(qb)"),
+
+            Cell("qn0 = QuoteNode(:value)"),
+            Cell("qn1 = :(:value)"),
+            Cell("qn0"),
+            Cell("qn1"),
+
         ])
 
         update_run!(🍭, notebook, notebook.cells)
         @test notebook.cells[1].errored == false
         @test notebook.cells[1].output.body == "false"
+        @test notebook.cells[22].output.body == "Expr"
+        @test notebook.cells[25].output.body == ":(:value)"
+        @test notebook.cells[26].output.body == ":(:value)"
 
         function benchmark(fonsi)
             filter(1:fonsi) do x

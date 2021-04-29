@@ -46,7 +46,7 @@ main {
     flex: 1;
 
     max-width: calc(700px + 25px + 6px); /* 700px + both paddings */
-    padding-top: 20px;
+    padding-top: 0px;
     padding-bottom: 4rem;
     padding-left: 25px;
     padding-right: 6px;
@@ -54,10 +54,14 @@ main {
     width: 100%;
 }
 
+body:not(.disable_ui) main {
+    padding-bottom: 16rem;
+}
+
 /* | main=25px+700px+6px=731px | pluto-helpbox=350px - 500px | */
 /* min-width: 731px+ */
 
-@media screen and (min-width: calc(700px + 25px + 6px + 350px)) and (max-width: calc(700px + 25px + 6px + 500px)) {
+@media screen and (min-width: calc(700px + 25px + 6px)) and (max-width: calc(700px + 25px + 6px + 500px)) {
     body:not(.disable_ui) main {
         margin-left: 0px;
         align-self: flex-start;
@@ -352,6 +356,10 @@ pluto-output table > tbody td {
     font-size: 0.75rem;
     font-variant-ligatures: none;
 }
+pluto-output table > tbody td code {
+    font-size: 0.75rem;
+}
+
 
 pluto-output table td,
 pluto-output table th {
@@ -364,6 +372,17 @@ pluto-output table > tbody tr:hover {
 pluto-output table pre {
     white-space: pre;
 }
+
+pluto-output kbd,
+kbd {
+    font-family: "Space Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: -0.7px;
+    border: 1px solid #dfdfdf;
+    padding: 0px 2px;
+    border-radius: 3px;
+}
+
 /* HEADER */
 
 body > header {
@@ -396,7 +415,7 @@ aside#export {
     height: 130px;
     background: rgb(60, 67, 101);
     color: rgba(255, 255, 255, 0.7);
-    transform: translateY(-100%);
+    transform: translateY(-101%);
 }
 aside#export::before {
     content: "";
@@ -461,6 +480,9 @@ a.export_card section {
 aside#export button.toggle_export {
     margin-left: auto;
     height: 60px;
+}
+body.static_preview button.toggle_export {
+    display: none;
 }
 
 nav#at_the_top h1 {
@@ -621,6 +643,18 @@ li.dir.CodeMirror-hint:before {
     }
 }
 
+body.binder > header > nav#at_the_top > pluto-filepicker > * {
+    display: none;
+}
+body.binder > header > nav#at_the_top > pluto-filepicker > a {
+    display: block;
+    font-size: 16px;
+    font-family: JuliaMono, monospace;
+    opacity: 0.8;
+    text-decoration: none;
+}
+
+body.binder.loading > header,
 body.process_dead > header,
 body.disconnected > header {
     position: sticky;
@@ -633,10 +667,13 @@ body.process_dead > header {
     background-color: rgb(230 88 46 / 38%);
 }
 body.loading > header {
-    background-color: hsla(290, 10%, 59%, 0.14);
+    background-color: hsla(290, 10%, 80%, 0.5);
 }
 body.disconnected > header {
     background-color: rgba(255, 169, 114, 0.56);
+}
+body.binder.loading > header {
+    background-color: hsl(51deg 64% 90% / 50%);
 }
 
 nav:after {
@@ -791,24 +828,74 @@ button#launch_binder img {
     font-weight: 900;
 }
 
+loading-bar {
+    height: 6px;
+    width: 10vw;
+    background-color: #b1c9dd;
+    position: fixed;
+    top: 0px;
+    display: block;
+    transition: width cubic-bezier(0.14, 0.71, 0, 0.99) 10s, opacity linear 0.5s;
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.binder.loading #binder_spinners {
+    opacity: 0.25;
+}
+body.binder.loading loading-bar {
+    opacity: 1;
+}
+
 /* PREAMBLE */
 
 main > preamble {
     display: flex;
-    position: relative;
     height: 20px;
+    position: sticky;
+    top: 5px;
+    margin-top: 5px;
+    padding-right: 5px;
+    z-index: 20;
 }
 
-main > preamble > button {
-    display: none;
-    right: 0px;
+main > preamble #saveall-container {
+    margin-left: auto;
+    right: min(0px, 700px + 25px - 100vw);
+    position: relative;
+    background: #ffffff;
+    padding: 5px 8px;
+    border: 3px solid #e3e3e3;
+    border-radius: 12px;
+    height: 35px;
+    font-family: "Segoe UI Emoji", "Roboto Mono", monospace;
+    font-size: 0.75rem;
 }
 
-main > preamble > button > span::after {
-    content: "Submit all changes";
-    display: block;
+@media screen and (min-width: calc(700px + 25px + 6px + 500px)) {
+    main > preamble #saveall-container {
+        right: -500px;
+    }
+}
+
+main > preamble #saveall-container.saving,
+main > preamble #saveall-container.saved {
+    border-color: transparent;
+}
+
+main > preamble #saveall-container.saving > span,
+main > preamble #saveall-container.saved > span {
+    opacity: 0.5;
+}
+
+main > preamble span.saved-icon::after,
+main > preamble span.saving-icon::after {
+    content: "";
+    display: inline-block;
     padding-right: 20px;
-
+    /* width: 17px; */
+    height: 17px;
+    margin-bottom: -3px;
     background-size: 17px 17px;
     background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/sync-circle-outline.svg);
     background-repeat: no-repeat;
@@ -816,9 +903,23 @@ main > preamble > button > span::after {
     background-position-y: 1px;
 }
 
-body.code_differs > main > preamble > button {
-    display: block;
+main > preamble span.saved-icon::after {
+    background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/checkmark-outline.svg);
 }
+main > preamble button {
+    position: relative;
+}
+
+#saveall-container .only-on-hover {
+    display: none;
+}
+#saveall-container:hover .only-on-hover {
+    display: inline;
+}
+
+/* body:not(.code_differs) > main > preamble #saveall-container {
+    display: none;
+} */
 
 /* CELL */
 
@@ -960,7 +1061,7 @@ pluto-cell.code_differs > pluto-input > .CodeMirror {
 
 /* UI */
 
-preamble > button,
+preamble button,
 pluto-cell > button,
 pluto-input > button,
 pluto-runarea > button,
@@ -1220,7 +1321,7 @@ pluto-input > button > span {
         transition: opacity 0.25s ease-in-out;
     }
     button.toggle_export:hover,
-    preamble > button:hover,
+    preamble button:hover,
     pluto-cell > button:hover,
     pluto-cell > pluto-input > button:hover,
     pluto-cell > pluto-runarea > button:hover,

@@ -63,6 +63,7 @@ export const CellInput = ({
     const remote_code_ref = useRef(null)
     const on_change_ref = useRef(null)
     on_change_ref.current = on_change
+    const disable_input_ref = useRef(disable_input)
 
     const time_last_being_force_focussed_ref = useRef(0)
     const time_last_genuine_backspace = useRef(0)
