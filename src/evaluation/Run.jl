@@ -196,7 +196,7 @@ function update_save_run!(session::ServerSession, notebook::Notebook, cells::Arr
 
 	pkg_task = @async try
 		pkg_result = withtoken(notebook.executetoken) do
-			update_nbpkg(notebook, old, new)
+			update_nbpkg(session, notebook, old, new)
 		end
 
 		if pkg_result.did_something

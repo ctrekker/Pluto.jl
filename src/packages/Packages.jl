@@ -53,7 +53,7 @@ function use_plutopkg(topology::NotebookTopology)
 end
 
 
-function update_nbpkg(notebook::Notebook, old::NotebookTopology, new::NotebookTopology)
+function update_nbpkg(session::ServerSession, notebook::Notebook, old::NotebookTopology, new::NotebookTopology)
     ctx = notebook.nbpkg_ctx
 
     👺 = false
@@ -94,15 +94,37 @@ function update_nbpkg(notebook::Notebook, old::NotebookTopology, new::NotebookTo
             to_remove = filter(removed) do p
                 haskey(ctx.env.project.deps, p)
             end
+            to_add = filter(PkgTools.package_exists, added)
+            @show to_add
+            
+            # Progress stuff
+            to_do_count = length(to_remove) + length(to_add)
+            progress = 0
+            @show to_do_count
+
+            update_progress = (progress, current_package=nothing, operation=nothing) -> (
+                putnotebookupdates!(session, notebook, UpdateMessage(:🙃, Dict(
+                    :progress => progress,
+                    :package => current_package,
+                    :operation => operation,
+                    :goal => to_do_count
+                ), notebook, nothing, nothing))
+            )
+
+
+            update_progress(progress, nothing, :remove)
+
             if !isempty(to_remove)
                 # See later comment
                 mkeys() = keys(filter(!is_stdlib ∘ last, ctx.env.manifest)) |> collect
                 old_manifest_keys = mkeys()
 
-                Pkg.rm(ctx, [
-                    Pkg.PackageSpec(name=p)
-                    for p in to_remove
-                ])
+                for p in to_remove
+                    update_progress(progress, p, :remove)
+                    Pkg.rm(ctx, [Pkg.PackageSpec(name=p)])
+                    progress += 1
+                end
+
 
                 # We record the manifest before and after, to prevent recommending a reboot when nothing got removed from the manifest (e.g. when removing GR, but leaving Plots), or when only stdlibs got removed.
                 new_manifest_keys = mkeys()
@@ -113,9 +135,6 @@ function update_nbpkg(notebook::Notebook, old::NotebookTopology, new::NotebookTo
             
             # TODO: instead of Pkg.PRESERVE_ALL, we actually want:
             # "Pkg.PRESERVE_DIRECT, but preserve exact verisons of Base.loaded_modules"
-
-            to_add = filter(PkgTools.package_exists, added)
-            @show to_add
 
             if !isempty(to_add)
                 # We temporarily clear the "semver-compatible" [deps] entries, because Pkg already respects semver, unless it doesn't, in which case we don't want to force it.
@@ -130,10 +149,11 @@ function update_nbpkg(notebook::Notebook, old::NotebookTopology, new::NotebookTo
                     used_tier = tier
 
                     try
-                        Pkg.add(ctx, [
-                            Pkg.PackageSpec(name=p)
-                            for p in to_add
-                        ]; preserve=used_tier)
+                        for p in to_add
+                            update_progress(progress, p, :add)
+                            Pkg.add(ctx, [Pkg.PackageSpec(name=p)]; preserve=used_tier)
+                            progress += 1
+                        end
                         
                         break
                     catch e
@@ -148,6 +168,8 @@ function update_nbpkg(notebook::Notebook, old::NotebookTopology, new::NotebookTo
 
                 @info "PlutoPkg done"
             end
+
+            update_progress(progress, nothing, :add)
 
             should_instantiate = !notebook.nbpkg_ctx_instantiated || !isempty(to_add) || !isempty(to_remove)
             if should_instantiate
