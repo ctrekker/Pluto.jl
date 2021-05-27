@@ -96,9 +96,11 @@ function update_nbpkg(session::ServerSession, notebook::Notebook, old::NotebookT
             end
             to_add = filter(PkgTools.package_exists, added)
             @show to_add
+
+            should_instantiate = !notebook.nbpkg_ctx_instantiated || !isempty(to_add) || !isempty(to_remove)
             
-            # Progress stuff
-            to_do_count = length(to_remove) + length(to_add)
+            # Progress things
+            to_do_count = length(to_remove) + length(to_add) + (should_instantiate ? 1 : 0)
             progress = 0
             @show to_do_count
 
@@ -171,13 +173,15 @@ function update_nbpkg(session::ServerSession, notebook::Notebook, old::NotebookT
 
             update_progress(progress, nothing, :add)
 
-            should_instantiate = !notebook.nbpkg_ctx_instantiated || !isempty(to_add) || !isempty(to_remove)
             if should_instantiate
                 # @info "Resolving"
                 # Pkg.resolve(ctx)
                 @info "Instantiating"
                 Pkg.instantiate(ctx)
                 notebook.nbpkg_ctx_instantiated = true
+
+                progress += 1
+                update_progress(progress, nothing, :instantiate)
             end
 
             return (

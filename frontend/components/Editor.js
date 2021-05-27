@@ -256,6 +256,7 @@ export class Editor extends Component {
                     },
                 },
             },
+            pkg_phase: null,
 
             update_is_ongoing: false,
         }
@@ -645,6 +646,21 @@ patch: ${JSON.stringify(
                         break
                     case "log":
                         handle_log(message, this.state.notebook.path)
+                        break
+                    case "🙃":
+                        console.log(message.progress, message.goal)
+                        this.setState({
+                            pkg_phase: message.progress / message.goal
+                        })
+
+                        // Wait for bar to reach the end, wait for the transition, then remove the bar
+                        if(message.progress === message.goal) {
+                            setTimeout(() => {
+                                this.setState({
+                                    pkg_phase: null
+                                })
+                            }, 3000) // The actual transition is 10s long but it's a cubic bezier so we'll truncate it at 3s
+                        }
                         break
                     default:
                         console.error("Received unknown update type!", update)
@@ -1068,7 +1084,7 @@ patch: ${JSON.stringify(
                             open=${export_menu_open}
                             onClose=${() => this.setState({ export_menu_open: false })}
                         />
-                        <loading-bar style=${`width: ${100 * this.state.binder_phase}vw`}></loading-bar>
+                        <loading-bar style=${`width: ${100 * (this.state.binder_phase || this.state.pkg_phase)}vw; opacity: ${(this.state.pkg_phase !== 1 && this.state.pkg_phase !== null) ? 1 : 0}`}></loading-bar>
                         ${
                             status.binder
                                 ? html`<div id="binder_spinners">
