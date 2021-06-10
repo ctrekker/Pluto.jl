@@ -76,4 +76,19 @@ function clientupdate_notebook_list(notebooks; initiator::Union{Initiator,Nothin
                 ) for notebook in values(notebooks)
             ]
         ), nothing, nothing, initiator)
-end                
+end        
+
+
+struct NotebookWithArgs
+    session::ServerSession
+    notebook::Notebook
+    kwargs::Dict{Symbol, Any}
+end
+# TODO: Find a way to place this differently
+function (nb::Notebook)(session::ServerSession; kwargs...)
+    return NotebookWithArgs(session, nb, Dict{Symbol, Any}(kwargs))
+end
+function Base.getproperty(nb_args::NotebookWithArgs, output::Symbol)
+    nb = getfield(nb_args, :notebook)
+    return REST.get_notebook_output(getfield(nb_args, :session), nb, nb.topology, getfield(nb_args, :kwargs), Set([output]))
+end
