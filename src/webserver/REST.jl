@@ -283,6 +283,7 @@ function Base.getproperty(with_args::PlutoNotebookWithArgs, symbol::Symbol)
     try
         return REST.evaluate(symbol, Base.getfield(Base.getfield(with_args, :notebook), :filename), Base.getfield(Base.getfield(with_args, :notebook), :host); Base.getfield(with_args, :kwargs)...)
     catch e
+        @warn "Couldn't evaluate due to \"$(e)\""
         if contains(e.msg, "function") # See if the function error was thrown, and return a PlutoCallable struct
             return PlutoCallable(Base.getfield(with_args, :notebook), symbol)
         end

@@ -19,8 +19,11 @@ import FuzzyCompletions: Completion, ModuleCompletion, PropertyCompletion, Field
 import Base: show, istextmime
 import UUIDs: UUID
 import Logging
+include("../webserver/RESTSecurity.jl")
 
 export @bind
+export @publish, @unpublish
+export published_defs
 
 MimedOutput = Tuple{Union{String,Vector{UInt8},Dict{Symbol,Any}},MIME}
 ObjectID = typeof(objectid("hello computer"))

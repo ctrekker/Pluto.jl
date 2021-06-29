@@ -312,12 +312,23 @@ function http_router_for(session::ServerSession)
         notebook = get_notebook_from_api_request(request)
         topology = notebook.topology
 
+        # is_listening = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ listening_defs")))) for sym in out_symbols)
+
+        is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ published_defs")))) for sym in out_symbols)
+        for (sym, val) in is_published
+            if val == 0
+                @warn "Not published"
+                return HTTP.Response(403, "$sym is not published.")
+            end
+        end
+
         inputs = rest_parameter(request, "inputs")
         outputs = nothing
         try
             outputs = REST.get_notebook_output(session, notebook, topology, Dict{Symbol, Any}(Symbol(k) => v for (k, v) ∈ inputs), out_symbols)
         catch e
             if isa(e, RemoteException) # Happens when Julia can't send an object (ex. a function)
+                @error "RemoteException"
                 return HTTP.Response(400, "Distributed serialization error. Is the requested variable a function?")
             else
                 showerror(stdout, e) # TODO: This line is for debug. Remove later
@@ -341,6 +352,14 @@ function http_router_for(session::ServerSession)
         fn_name = Symbol(rest_parameter(request, "function"))
         args = rest_parameter(request, "args")
         kwargs = rest_parameter(request, "kwargs")
+
+        is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ published_defs")))) for sym in [fn_name])
+        for (sym, val) in is_published
+            if val == 0
+                @warn "Not published"
+                return HTTP.Response(403, "$sym is not published.")
+            end
+        end
 
         fn_symbol = :($(fn_name)($(args...); $([:($k=$v) for (k, v) ∈ kwargs]...)))
         fn_result = WorkspaceManager.eval_fetch_in_workspace((session, notebook), fn_symbol)
