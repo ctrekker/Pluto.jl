@@ -22,8 +22,8 @@ import Logging
 include("../webserver/RESTSecurity.jl")
 
 export @bind
-export @publish, @unpublish
-export published_defs
+export @publish, @unpublish, @listen, @unlisten
+export REST_Specificity_Main
 
 MimedOutput = Tuple{Union{String,Vector{UInt8},Dict{Symbol,Any}},MIME}
 ObjectID = typeof(objectid("hello computer"))
