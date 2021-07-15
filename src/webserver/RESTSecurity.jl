@@ -7,6 +7,18 @@ REST_Specificity_Main = REST_Specificity(Set(), Set())
 
 # TODO: Only allow arguments defined in the file.
 # TODO: Add other in-line syntax
+
+function get_symbol(expr)
+    if typeof(expr) == Symbol
+        expr
+    elseif typeof(expr) == Expr
+        expr.args[1]
+    else
+        throw(ErrorException("Unknown expression type $expr");)
+    end
+end
+
+
 """
 """
 macro publish(defs...)
@@ -24,38 +36,14 @@ macro publish(defs...)
     out[1:end - 2]
 end
 
-macro publish(expr::Expr)
-    function get_symbol(expr)
-        if typeof(expr) == Symbol
-            expr
-        elseif typeof(expr) == Expr
-            expr.args[1]
-        else
-            throw(ErrorException("Unknown expression type $expr");)
-        end
-    end
-
-    if expr.head == :function
-        @info "macro - function"
-        try
-            symbol = get_symbol(expr.args[1])
-            push!(REST_Specificity_Main.published_defs, symbol)  
-        catch e
-            println("Couldn't publish $symbol")
-            throw(e)
-        end          
-    elseif expr.head == :(=)
-        @info "macro - assignment"
-        try
-            symbol = get_symbol(expr.args[1])
-            push!(REST_Specificity_Main.published_defs, symbol)  
-        catch e
-            println("Couldn't publish $symbol")
-            throw(e)
-        end      
-    else
-        throw(ErrorException("Neither a function or assignment. Invalid."))
-    end
+macro publish(expr::Expr)    
+    try
+        symbol = get_symbol(expr.args[1])
+        push!(REST_Specificity_Main.published_defs, symbol)  
+    catch e
+        println("Couldn't publish $symbol")
+        throw(e)
+    end          
     return esc(expr)
 end
 
