@@ -73,6 +73,17 @@ macro listen(defs...)
     out[1:end-2]
 end
 
+macro listen(expr::Expr)    
+    try
+        symbol = get_symbol(expr.args[1])
+        push!(REST_Specificity_Main.listening_defs, symbol)  
+    catch e
+        println("Couldn't publish $symbol")
+        throw(e)
+    end          
+    return esc(expr)
+end
+
 macro unlisten(defs...)
     out = "Unlistened: "
     for arg in defs
