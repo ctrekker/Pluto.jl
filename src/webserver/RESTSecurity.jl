@@ -10,9 +10,19 @@ REST_Specificity_Main = REST_Specificity(Set(), Set())
 
 function get_symbol(expr)
     if typeof(expr) == Symbol
+        @info "'Expression' is symbol: $expr"
         expr
     elseif typeof(expr) == Expr
-        expr.args[1]
+        if expr.head == :function 
+            @info "Expression is function"
+            expr.args[1].args[1]
+        elseif expr.head == :(=)
+            @info "Expression is assignment"
+            expr.args[1]
+        elseif expr.head == :macrocall
+            @info "Experession is macro call"
+            get_symbol(expr.args[3])
+        end
     else
         throw(ErrorException("Unknown expression type $expr");)
     end
@@ -38,7 +48,8 @@ end
 
 macro publish(expr::Expr)    
     try
-        symbol = get_symbol(expr.args[1])
+        symbol = get_symbol(expr)
+        @info "Publishing symbol is: $symbol"
         push!(REST_Specificity_Main.published_defs, symbol)  
     catch e
         println("Couldn't publish $symbol")
@@ -75,7 +86,8 @@ end
 
 macro listen(expr::Expr)    
     try
-        symbol = get_symbol(expr.args[1])
+        symbol = get_symbol(expr)
+        @info "Listening symbol is: $symbol"
         push!(REST_Specificity_Main.listening_defs, symbol)  
     catch e
         println("Couldn't publish $symbol")
