@@ -55,6 +55,7 @@ include("./webserver/Static.jl")
 include("./webserver/Dynamic.jl")
 include("./webserver/REPLTools.jl")
 include("./webserver/WebServer.jl")
+include("./webserver/RESTSecurity.jl")
 include("./rest/REST.jl")
 
 const reset_notebook_environment = PkgUtils.reset_notebook_environment
@@ -63,6 +64,7 @@ const activate_notebook_environment = PkgUtils.activate_notebook_environment
 export reset_notebook_environment
 export update_notebook_environment
 export activate_notebook_environment
+include("./webserver/REST.jl")
 
 if get(ENV, "JULIA_PLUTO_SHOW_BANNER", "1") !== "0"
 @info """\n
