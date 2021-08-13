@@ -317,6 +317,7 @@ function http_router_for(session::ServerSession)
 
         # Get notebook from request parameters
         notebook = get_notebook_from_api_request(request)
+        topology = notebook.topology
 
         inputs = rest_parameter(request, "inputs")
 
@@ -373,54 +374,53 @@ function http_router_for(session::ServerSession)
                 showerror(stdout, e) # TODO: This line is for debug. Remove later
                 return HTTP.Response(400, e.msg)
             end
-
-            rest_serialize(request, outputs)
         end
-        HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/eval", serve_notebook_eval)
-        HTTP.@register(router, "POST", "/$(REST.WYSIWYR_VERSION)/notebook/*/eval", serve_notebook_eval)
-
-        function serve_notebook_call(request::HTTP.Request)
-            # Get notebook from request parameters
-            notebook = get_notebook_from_api_request(request)
-            topology = notebook.topology
-
-            fn_name = Symbol(rest_parameter(request, "function"))
-            args = rest_parameter(request, "args")
-            kwargs = rest_parameter(request, "kwargs")
-
-            is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ REST_Specificity_Main.published_defs")))) for sym in [fn_name])
-            for (sym, val) in is_published
-                if val == 0
-                    @warn "Not published"
-                    return HTTP.Response(403, "$sym is not published.")
-                end
-            end
-
-            fn_symbol = :($(fn_name)($(args...); $([:($k=$v) for (k, v) ∈ kwargs]...)))
-            fn_result = WorkspaceManager.eval_fetch_in_workspace((session, notebook), fn_symbol)
-
-            rest_serialize(request, fn_result)
-        end
-        HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/call", serve_notebook_call)
-        HTTP.@register(router, "POST", "/$(REST.WYSIWYR_VERSION)/notebook/*/call", serve_notebook_call)
-
-        function serve_notebook_static_fn(request::HTTP.Request)
-            uri = HTTP.URI(request.target)
-            query = HTTP.queryparams(uri)
-
-            out_symbols = Symbol.(split(query["outputs"], ","))
-
-            notebook = get_notebook_from_api_request(request)
-
-            input_symbols = Symbol.(split(query["inputs"], ","))
-            out_fn = REST.get_notebook_static_function(session, notebook, notebook.topology, input_symbols, out_symbols)
-
-            res = HTTP.Response(200, string(out_fn))
-            push!(res.headers, "Content-Type" => "text/plain; charset=utf-8")
-            res
-        end
-        HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/static", serve_notebook_static_fn)
+        rest_serialize(request, outputs)
     end
+    HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/eval", serve_notebook_eval)
+    HTTP.@register(router, "POST", "/$(REST.WYSIWYR_VERSION)/notebook/*/eval", serve_notebook_eval)
+
+    function serve_notebook_call(request::HTTP.Request)
+        # Get notebook from request parameters
+        notebook = get_notebook_from_api_request(request)
+        topology = notebook.topology
+
+        fn_name = Symbol(rest_parameter(request, "function"))
+        args = rest_parameter(request, "args")
+        kwargs = rest_parameter(request, "kwargs")
+
+        is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ REST_Specificity_Main.published_defs")))) for sym in [fn_name])
+        for (sym, val) in is_published
+            if val == 0
+                @warn "Not published"
+                return HTTP.Response(403, "$sym is not published.")
+            end
+        end
+
+        fn_symbol = :($(fn_name)($(args...); $([:($k=$v) for (k, v) ∈ kwargs]...)))
+        fn_result = WorkspaceManager.eval_fetch_in_workspace((session, notebook), fn_symbol)
+
+        rest_serialize(request, fn_result)
+    end
+    HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/call", serve_notebook_call)
+    HTTP.@register(router, "POST", "/$(REST.WYSIWYR_VERSION)/notebook/*/call", serve_notebook_call)
+
+    function serve_notebook_static_fn(request::HTTP.Request)
+        uri = HTTP.URI(request.target)
+        query = HTTP.queryparams(uri)
+
+        out_symbols = Symbol.(split(query["outputs"], ","))
+
+        notebook = get_notebook_from_api_request(request)
+
+        input_symbols = Symbol.(split(query["inputs"], ","))
+        out_fn = REST.get_notebook_static_function(session, notebook, notebook.topology, input_symbols, out_symbols)
+
+        res = HTTP.Response(200, string(out_fn))
+        push!(res.headers, "Content-Type" => "text/plain; charset=utf-8")
+        res
+    end
+    HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/static", serve_notebook_static_fn)
 
     notebook_from_uri(request) = let
         uri = HTTP.URI(request.target)        
