@@ -331,7 +331,10 @@ function http_router_for(session::ServerSession)
             if val == 1
                 @info "$sym is restricted and key is $given_key"
                 #TODO: Expression being passed to eval_fetch_in_workspace is incorrect
-                eq = WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($given_key == REST_Specificity_Main.restricted_tokens[$(Meta.parse(":"*String(sym)))]))
+                workspace_expr = quote
+                    $given_key == eval(REST_Specificity_Main.restricted_tokens[$(Meta.parse(":"*String(sym)))])
+                end
+                eq = WorkspaceManager.eval_fetch_in_workspace((session, notebook), workspace_expr)
                 @info "Equal: $eq"
                 if !eq
                     @warn "A value"

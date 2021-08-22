@@ -13,17 +13,17 @@ PlutoAPIKey = nothing
 function get_symbol(expr)
     if typeof(expr) == Symbol
         @info "'Expression' is symbol: $expr"
-        expr
+        return expr
     elseif typeof(expr) == Expr
         if expr.head == :function 
             @info "Expression is function"
-            expr.args[1].args[1]
+            return expr.args[1].args[1]
         elseif expr.head == :(=)
             @info "Expression is assignment"
-            expr.args[1]
+            return expr.args[1]
         elseif expr.head == :macrocall
             @info "Experession is macro call"
-            get_symbol(expr.args[3])
+            return get_symbol(expr.args[3])
         end
     else
         throw(ErrorException("Unknown expression type $expr");)
@@ -108,32 +108,37 @@ macro unlisten(defs...)
 end
 
 """
-To call a restricted item use `nb(;Pluto_API_Token=My_Token).item`
+To call a restricted item use `nb(;PlutoAPIKey=My_Token).item`
 """
-macro restrict(token::String, defs...)
-    out = "Restricted: "
-    for arg in defs
-        try
-            REST_Specificity_Main.restricted_tokens[Symbol(arg)] = token
-            out *= String(Symbol(arg)) * " => $(token)" * ", "
-        catch e
-            println("Couldn't restrict ", string(Symbol(arg)))
-            throw(e)
+macro restrict(token, defs...)
+    return quote
+        token = $token
+        out = "Restricted: "
+        for arg in $defs
+            try
+                REST_Specificity_Main.restricted_tokens[Symbol(arg)] = token
+                out *= String(Symbol(arg)) * " => $(token)" * ", "
+            catch e
+                println("Couldn't restrict ", string(Symbol(arg)))
+                throw(e)
+            end
         end
+        @info "--- Published ---"
+        out[1:end - 2]
     end
-    @info "--- Published ---"
-    out[1:end - 2]
 end
 
-macro restrict(token::String, expr::Expr)    
+macro restrict(token, expr::Expr)
+    @info "Temp Token Info: ", token, typeof(token)
     try
         symbol = get_symbol(expr)
+        # print("Symbol is: ", symbol)
         @info "Restricting symbol is: $symbol"
-        REST_Specificity_Main.restricted_tokens[symbol] = token
+        REST_Specificity_Main.restricted_tokens[symbol] = :($token)
     catch e
         println("Couldn't restrict $symbol")
         throw(e)
-    end          
+    end  
     return esc(expr)
 end
 
