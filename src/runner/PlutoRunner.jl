@@ -905,18 +905,13 @@ function tree_data(@nospecialize(x::AbstractArray{<:Any,1}), context::IOContext)
         end
 
         prefix = array_prefix(x)
-        d = Dict{Symbol,Any}(
+        Dict{Symbol,Any}(
             :prefix => prefix,
             :prefix_short => x isa Vector ? "" : prefix, # if not abstract
             :objectid => string(objectid(x), base=16),
             :type => :Array,
             :elements => elements
         )
-        println(prefix)
-        println(typeof(prefix))
-        println(typeof(d[:elements]))
-        println(typeof(first(d[:elements])))
-        d
     end
 end
 
