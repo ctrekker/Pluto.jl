@@ -884,6 +884,11 @@ function tree_data(@nospecialize(x::AbstractArray{<:Any,1}), context::IOContext)
         recur_io = IOContext(context, Pair{Symbol,Any}(:SHOWN_SET, x), Pair{Symbol,Any}(:tree_viewer_depth, depth + 1))
 
         indices = eachindex(x)
+        # Make sure the iterator can be indexed. If not assume it's a range
+        # https://github.com/fonsp/Pluto.jl/issues/1378
+        if !hasmethod(getindex, (typeof(indices), AbstractRange))
+            indices = 1:length(indices)
+        end
         my_limit = get_my_display_limit(x, 1, depth, context, tree_display_limit, tree_display_limit_increase)
 
         # additional couple of elements so that we don't cut off 1 or 2 itmes - that's silly
@@ -900,13 +905,18 @@ function tree_data(@nospecialize(x::AbstractArray{<:Any,1}), context::IOContext)
         end
 
         prefix = array_prefix(x)
-        Dict{Symbol,Any}(
+        d = Dict{Symbol,Any}(
             :prefix => prefix,
             :prefix_short => x isa Vector ? "" : prefix, # if not abstract
             :objectid => string(objectid(x), base=16),
             :type => :Array,
             :elements => elements
         )
+        println(prefix)
+        println(typeof(prefix))
+        println(typeof(d[:elements]))
+        println(typeof(first(d[:elements])))
+        d
     end
 end
 
