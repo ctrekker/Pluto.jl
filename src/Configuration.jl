@@ -49,6 +49,7 @@ The HTTP server options. See [`SecurityOptions`](@ref) for additional settings.
     notebook::Union{Nothing,String, Vector{<: String}} = nothing
     init_with_file_viewer::Bool=false
     simulated_lag::Real=0.0
+    static_serve::Union{String, Nothing} = nothing
 end
 
 """

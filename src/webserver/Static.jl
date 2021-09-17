@@ -274,7 +274,13 @@ function http_router_for(session::ServerSession)
         uri = HTTP.URI(request.target)
         
         filepath = project_relative_path("frontend", relpath(HTTP.unescapeuri(uri.path), "/"))
-        asset_response(filepath)
+        # if it's not a file try to serve from the auxiliary static directory
+        if !isfile(filepath)
+            static_filepath = joinpath(session.options.server.static_serve, relpath(HTTP.unescapeuri(uri.path), "/"))
+            asset_response(static_filepath)
+        else
+            asset_response(filepath)
+        end
     end
     HTTP.@register(router, "GET", "/*", serve_asset)
     HTTP.@register(router, "GET", "/favicon.ico", create_serve_onefile(project_relative_path("frontend", "img", "favicon.ico")))
