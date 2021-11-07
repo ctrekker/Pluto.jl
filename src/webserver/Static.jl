@@ -314,17 +314,66 @@ function http_router_for(session::ServerSession)
 
     if session.options.server.enable_rest
         function serve_notebook_eval(request::HTTP.Request)
+            @warn "Notebook Eval"
+            uri = HTTP.URI(request.target)
+            query = HTTP.queryparams(uri)
+
+            parts = HTTP.URIs.splitpath(uri.path)
             out_symbols = Symbol.(rest_parameter(request, "outputs"))
 
             # Get notebook from request parameters
             notebook = get_notebook_from_api_request(request)
+            topology = notebook.topology
 
             inputs = rest_parameter(request, "inputs")
+
+            given_key = get(inputs, :PlutoAPIKey, "")
+            @info "Key: $given_key"
+
+            @info "Inputs Before: $inputs"
+            @info "Input keys: $(keys(inputs))"
+            filter!(d -> d.first == PlutoAPIKey, inputs)
+            @info "Inputs After: $inputs"
+            @info "Input keys: $(keys(inputs))"
+
+            # Check if symbol is restricted
+            is_restricted = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ keys(REST_Specificity_Main.restricted_tokens)")))) for sym in out_symbols)
+            @info "Restricted: $is_restricted"
+            for (sym, val) in is_restricted
+                if val == 1
+                    @info "$sym is restricted and key is $given_key"
+                    #TODO: Expression being passed to eval_fetch_in_workspace is incorrect
+                    eq = WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($given_key == REST_Specificity_Main.restricted_tokens[$(Meta.parse(":"*String(sym)))]))
+                    @info "Equal: $eq"
+                    if !eq
+                        @warn "A value"
+                        return HTTP.Response(403, "The key you gave for $sym is incorrect")
+                    end
+                end
+            end
+
+            # Check if symbol is listening for changes 
+            is_listening = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ REST_Specificity_Main.listening_defs")))) for (sym,val) in inputs)
+            for (sym, val) in is_listening
+                if val == 0
+                    @warn "Not listening for values"
+                    return HTTP.Response(403, "$sym is not listening.")
+                end
+            end
+
+            # Check if symbol is published
+            is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ REST_Specificity_Main.published_defs")))) for sym in out_symbols)
+            for (sym, val) in is_published
+                if val == 0
+                    @warn "Not published"
+                    return HTTP.Response(403, "$sym is not published.")
+                end
+            end
+
             outputs = nothing
             try
-                outputs = REST.get_notebook_output(session, notebook, notebook.topology, Dict{Symbol, Any}(Symbol(k) => v for (k, v) ∈ inputs), out_symbols)
+                outputs = REST.get_notebook_output(session, notebook, topology, Dict{Symbol, Any}(Symbol(k) => v for (k, v) ∈ inputs), out_symbols)
             catch e
-                # println(e)
                 if isa(e, RemoteException) # Happens when Julia can't send an object (ex. a function)
                     return HTTP.Response(400, "Distributed serialization error. Is the requested variable a function?")
                 else
@@ -332,7 +381,6 @@ function http_router_for(session::ServerSession)
                     return HTTP.Response(400, e.msg)
                 end
             end
-
             rest_serialize(request, outputs)
         end
         HTTP.@register(router, "GET", "/$(REST.WYSIWYR_VERSION)/notebook/*/eval", serve_notebook_eval)
@@ -341,12 +389,22 @@ function http_router_for(session::ServerSession)
         function serve_notebook_call(request::HTTP.Request)
             # Get notebook from request parameters
             notebook = get_notebook_from_api_request(request)
+            topology = notebook.topology
 
             fn_name = Symbol(rest_parameter(request, "function"))
             args = rest_parameter(request, "args")
             kwargs = rest_parameter(request, "kwargs")
 
-            fn_result = REST.get_notebook_call(session, notebook, fn_name, args, kwargs)
+            is_published = Dict(sym => WorkspaceManager.eval_fetch_in_workspace((session, notebook), :($(Meta.parse(":"*String(Symbol(sym))*" ∈ REST_Specificity_Main.published_defs")))) for sym in [fn_name])
+            for (sym, val) in is_published
+                if val == 0
+                    @warn "Not published"
+                    return HTTP.Response(403, "$sym is not published.")
+                end
+            end
+
+            fn_symbol = :($(fn_name)($(args...); $([:($k=$v) for (k, v) ∈ kwargs]...)))
+            fn_result = WorkspaceManager.eval_fetch_in_workspace((session, notebook), fn_symbol)
 
             rest_serialize(request, fn_result)
         end

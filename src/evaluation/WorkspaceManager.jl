@@ -379,6 +379,7 @@ end
 
 "Evaluate expression inside the workspace - output is returned. For internal use."
 function eval_fetch_in_workspace(session_notebook::Union{SN,Workspace}, expr)
+    @info "Fetch expr: $expr"
     workspace = get_workspace(session_notebook)
     
     Distributed.remotecall_eval(Main, workspace.pid, :(Core.eval($(workspace.module_name), $(expr |> QuoteNode))))

@@ -21,9 +21,12 @@ import Base: show, istextmime
 import UUIDs: UUID, uuid4
 import Dates: DateTime
 import Logging
+include("../webserver/RESTSecurity.jl")
 
 export @bind
 export PlutoNotebook
+export @publish, @unpublish, @listen, @unlisten, @restrict
+export REST_Specificity_Main, PlutoAPIKey
 
 MimedOutput = Tuple{Union{String,Vector{UInt8},Dict{Symbol,Any}},MIME}
 const ObjectID = typeof(objectid("hello computer"))

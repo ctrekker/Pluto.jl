@@ -175,6 +175,7 @@ function Base.getproperty(with_args::PlutoNotebookWithArgs, symbol::Symbol)
         if hasfield(typeof(e), :msg) && contains(e.msg, "function") # See if the function error was thrown, and return a PlutoCallable struct
             return PlutoCallable(Base.getfield(with_args, :notebook), symbol)
         end
+        @warn "Couldn't evaluate due to \"$(e)\""
         throw(e)
     end
 end
