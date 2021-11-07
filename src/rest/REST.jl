@@ -164,9 +164,6 @@ end
 end
 
 
-PlutoNotebook = PlutoRunner.PlutoNotebook
-PlutoNotebookWithArgs = PlutoRunner.PlutoNotebookWithArgs
-
 macro resolve(notebook, inputs, output)
     :(
         eval(REST.static_function($(esc(output)), [$(esc(inputs))...], Base.getfield($(esc(notebook)), :filename), Base.getfield($(esc(notebook)), :host)))
