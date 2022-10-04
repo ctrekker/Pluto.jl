@@ -88,10 +88,11 @@ The HTTP server options. See [`SecurityOptions`](@ref) for additional settings.
     auto_reload_from_file::Bool = AUTO_RELOAD_FROM_FILE_DEFAULT
     auto_reload_from_file_cooldown::Real = AUTO_RELOAD_FROM_FILE_COOLDOWN_DEFAULT
     auto_reload_from_file_ignore_pkg::Bool = AUTO_RELOAD_FROM_FILE_IGNORE_PKG_DEFAULT
-    notebook::Union{Nothing,String,Vector{<:String}} = NOTEBOOK_DEFAULT
-    init_with_file_viewer::Bool = INIT_WITH_FILE_VIEWER_DEFAULT
+    notebook::Union{Nothing,String, Vector{<: String}} = NOTEBOOK_DEFAULT
+    init_with_file_viewer::Bool=INIT_WITH_FILE_VIEWER_DEFAULT
     simulated_lag::Real = SIMULATED_LAG_DEFAULT
-    simulated_pkg_lag::Real = SIMULATED_PKG_LAG_DEFAULT
+    simulated_pkg_lag::Real=SIMULATED_PKG_LAG_DEFAULT
+    enable_rest::Bool = true
     injected_javascript_data_url::String = INJECTED_JAVASCRIPT_DATA_URL_DEFAULT
     on_event::Function = ON_EVENT_DEFAULT
 end

@@ -22,6 +22,10 @@ verify_no_running_processes()
 verify_no_running_processes()
 @timeit_include("Dynamic.jl")
 verify_no_running_processes()
+@timeit_include("REST.jl")
+
+# for SOME reason 😞 the Notebook.jl tests need to run AFTER all the tests above, or the Github Actions runner on Windows gets internal julia errors.
+verify_no_running_processes()
 @timeit_include("MacroAnalysis.jl")
 verify_no_running_processes()
 @timeit_include("Logging.jl")

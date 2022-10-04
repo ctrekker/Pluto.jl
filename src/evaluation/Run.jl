@@ -187,10 +187,10 @@ function run_reactive_core!(
         if !is_resolved(new_topology) && can_help_resolve_cells(new_topology, cell)
             notebook.topology = new_new_topology = resolve_topology(session, notebook, new_topology, old_workspace_name)
 
-            if !isempty(implicit_usings)
-                new_soft_definitions = WorkspaceManager.collect_soft_definitions((session, notebook), implicit_usings)
-                notebook.topology = new_new_topology = with_new_soft_definitions(new_new_topology, cell, new_soft_definitions)
-            end
+			if !isempty(implicit_usings)
+				new_soft_definitions = WorkspaceManager.collect_soft_definitions(workspace, implicit_usings)
+				notebook.topology = new_new_topology = with_new_soft_definitions(new_new_topology, cell, new_soft_definitions)
+			end
 
             # update cache and save notebook because the dependencies might have changed after expanding macros
             update_dependency_cache!(notebook)

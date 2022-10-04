@@ -476,7 +476,7 @@ function format_fetch_in_workspace(
     end
 end
 
-function collect_soft_definitions(session_notebook::SN, modules::Set{Expr})
+function collect_soft_definitions(session_notebook::Union{SN,Workspace}, modules::Set{Expr})
     workspace = get_workspace(session_notebook)
     module_name = workspace.module_name
 

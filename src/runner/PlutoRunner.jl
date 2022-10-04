@@ -31,6 +31,7 @@ import Logging
 import REPL
 
 export @bind
+export PlutoNotebook
 
 # This is not a struct to make it easier to pass these objects between distributed processes.
 const MimedOutput = Tuple{Union{String,Vector{UInt8},Dict{Symbol,Any}},MIME}
@@ -657,6 +658,7 @@ function move_vars(
     methods_to_delete::Set{Tuple{UUID,Vector{Symbol}}},
     module_imports_to_move::Set{Expr},
     invalidated_cell_uuids::Set{UUID},
+    keep_deleted_variables::Bool=false,
 )
     old_workspace = getfield(Main, old_workspace_name)
     new_workspace = getfield(Main, new_workspace_name)
@@ -685,7 +687,11 @@ function move_vars(
             # for example, the old module might extend an imported function:
             # `import Base: show; show(io::IO, x::Flower) = print(io, "🌷")`
             # when you delete/change this cell, you want this extension to disappear.
-            if isdefined(old_workspace, symbol)
+
+            # unless keep_deleted_variables is true, in which case we want to delete methods
+            # and variables but keep them defined in the old workspace. This is used for 
+            # the REST API
+            if !keep_deleted_variables && isdefined(old_workspace, symbol)
                 # try_delete_toplevel_methods(old_workspace, symbol)
 
                 try
@@ -1971,6 +1977,7 @@ const fake_bind = """macro bind(def, element)
         el
     end
 end"""
+
 
 
 
