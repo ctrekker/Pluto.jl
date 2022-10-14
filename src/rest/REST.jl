@@ -85,9 +85,10 @@ function get_notebook_output(session::ServerSession, notebook::Notebook, topolog
         where_referenced(notebook, notebook.topology, Set{Symbol}(to_set))...
     ]
 
-    function custom_deletion_hook(session_notebook::Union{WorkspaceManager.SN, WorkspaceManager.Workspace}, old_workspace_name::Symbol, new_workspace_name::Union{Nothing,Symbol}, to_delete_vars::Set{Symbol}, funcs_to_delete::Set{Tuple{UUID,FunctionName}}, to_reimport::Set{Expr}; to_run::AbstractVector{Cell})
+    # workspace, old_workspace_name, nothing, to_delete_vars, to_delete_funcs, to_reimport, cells_to_macro_invalidate; to_run = to_run
+    function custom_deletion_hook(session_notebook::Union{WorkspaceManager.SN, WorkspaceManager.Workspace}, old_workspace_name::Symbol, new_workspace_name::Union{Nothing,Symbol}, to_delete_vars::Set{Symbol}, methods_to_delete::Set{Tuple{UUID,FunctionName}}, module_imports_to_move::Set{Expr}, invalidated_cell_uuids::Set{UUID}; to_run::AbstractVector{Cell})
         to_delete_vars = Set{Symbol}([to_delete_vars..., to_set...]) # also delete the bound symbols
-        WorkspaceManager.move_vars(session_notebook, old_workspace_name, new_workspace_name, to_delete_vars, funcs_to_delete, to_reimport, true)
+        WorkspaceManager.move_vars(session_notebook, old_workspace_name, new_workspace_name, to_delete_vars, methods_to_delete, module_imports_to_move, invalidated_cell_uuids)
 
         workspace = WorkspaceManager.get_workspace(session_notebook)
         eval_workspace = workspace.module_name
@@ -101,17 +102,31 @@ function get_notebook_output(session::ServerSession, notebook::Notebook, topolog
     rest_formatted_errors = Dict{Cell, Any}()
 
     "Run a single cell non-reactively without updating ouputs, but saving errors"
-    function run_single_rest!(session_notebook::Union{Tuple{ServerSession,Notebook},WorkspaceManager.Workspace}, cell::Cell, reactive_node::ReactiveNode, expr_cache::ExprAnalysisCache; user_requested_run::Bool=true)
+    function run_single_rest!(
+        session_notebook::Union{Tuple{ServerSession,Notebook},WorkspaceManager.Workspace},
+        cell::Cell,
+        reactive_node::ReactiveNode,
+        expr_cache::ExprAnalysisCache;
+        user_requested_run::Bool=true,
+        capture_stdout::Bool=true,
+    )
         run = WorkspaceManager.eval_format_fetch_in_workspace(
-            session_notebook, 
-            expr_cache.parsedcode, 
-            cell.cell_id, 
-            ends_with_semicolon(cell.code), 
-            expr_cache.function_wrapped ? (filter(!is_joined_funcname, reactive_node.references), reactive_node.definitions) : nothing,
-            expr_cache.forced_expr_id,
+            session_notebook,
+            expr_cache.parsedcode,
+            cell.cell_id;
+            
+            ends_with_semicolon =
+                ends_with_semicolon(cell.code),
+            function_wrapped_info =
+                expr_cache.function_wrapped ? (filter(!is_joined_funcname, reactive_node.references), reactive_node.definitions) : nothing,
+            forced_expr_id =
+                expr_cache.forced_expr_id,
+            known_published_objects =
+                collect(keys(cell.published_objects)),
             user_requested_run,
-            collect(keys(cell.published_objects)),
+            capture_stdout,
         )
+
         if run.errored
             rest_formatted_errors[cell] = run
         end
@@ -125,12 +140,30 @@ function get_notebook_output(session::ServerSession, notebook::Notebook, topolog
     new_workspace_name = WorkspaceManager.create_emptyworkspacemodule(current_workspace.pid)
     workspace = WorkspaceManager.Workspace(;
         pid=current_workspace.pid,
-        log_channel=current_workspace.log_channel, 
+        notebook_id=current_workspace.notebook_id,
+        discarded=current_workspace.discarded,
+        remote_log_channel=current_workspace.remote_log_channel, 
         module_name=new_workspace_name,
+        dowork_token=current_workspace.dowork_token,
+        nbpkg_was_active=current_workspace.nbpkg_was_active,
+        is_offline_renderer=current_workspace.is_offline_renderer,
         original_LOAD_PATH=current_workspace.original_LOAD_PATH,
         original_ACTIVE_PROJECT=current_workspace.original_ACTIVE_PROJECT,
     )
-    update_save_run!(session, notebook, to_reeval; deletion_hook=custom_deletion_hook, dependency_mod=Cell[intersection_path...], workspace_override=workspace, old_workspace_name_override=current_workspace.module_name, send_notebook_changes=false, run_async=false, save=false, run_single_fn! = run_single_rest!)
+    # for now, no dependency_mod: `dependency_mod=Cell[intersection_path...],`
+    update_save_run!(
+        session,
+        notebook,
+        to_reeval;
+        
+        deletion_hook = custom_deletion_hook,
+        workspace_override = workspace,
+        old_workspace_name_override = current_workspace.module_name,
+        send_notebook_changes = false,
+        run_async = false,
+        save = false,
+        run_single_fn! = run_single_rest!
+    )
 
     if isempty(rest_formatted_errors)
         Dict(out_symbol => WorkspaceManager.eval_fetch_in_workspace(workspace, out_symbol) for out_symbol in outputs)

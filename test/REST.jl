@@ -3,7 +3,6 @@ import Pluto: REST, Notebook, Cell, ServerSession, update_run!
 import Pluto.WorkspaceManager: poll
 import Pluto
 import HTTP
-using PlutoRESTClient
 
 @testset "REST API" begin
     # test REST module's functions directly with no HTTP middle-man

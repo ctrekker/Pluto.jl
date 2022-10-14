@@ -47,11 +47,20 @@ function run_reactive_core!(
     user_requested_run::Bool = true,
     already_run::Vector{Cell} = Cell[],
     bond_value_pairs=zip(Symbol[],Any[]),
+
+	workspace_override::Union{Nothing, WorkspaceManager.Workspace} = nothing,
+	old_workspace_name_override::Union{Nothing, Symbol} = nothing,
+	send_notebook_changes::Bool = true,
+	run_single_fn! = run_single!,
 )::TopologicalOrder
     @assert !isready(notebook.executetoken) "run_reactive_core!() was called with a free notebook.executetoken."
     @assert will_run_code(notebook)
 
-    old_workspace_name, _ = WorkspaceManager.bump_workspace_module((session, notebook))
+	workspace, old_workspace_name, _ = if isnothing(workspace_override)
+    	((session, notebook), WorkspaceManager.bump_workspace_module((session, notebook))...)
+	else  # override the workspace we are running on; used for REST API
+		workspace_override, old_workspace_name_override, workspace_override.module_name
+	end
 
     if !is_resolved(new_topology)
         unresolved_topology = new_topology
@@ -140,7 +149,7 @@ function run_reactive_core!(
 
     to_reimport = union!(Set{Expr}(), map(c -> new_topology.codes[c].module_usings_imports.usings, setdiff(notebook.cells, to_run))...)
     if will_run_code(notebook)
-        deletion_hook((session, notebook), old_workspace_name, nothing, to_delete_vars, to_delete_funcs, to_reimport, cells_to_macro_invalidate; to_run = to_run) # `deletion_hook` defaults to `WorkspaceManager.move_vars`
+        deletion_hook(workspace, old_workspace_name, nothing, to_delete_vars, to_delete_funcs, to_reimport, cells_to_macro_invalidate; to_run = to_run) # `deletion_hook` defaults to `WorkspaceManager.move_vars`
     end
 
     delete!.([notebook.bonds], to_delete_vars)
@@ -158,8 +167,8 @@ function run_reactive_core!(
         if any_interrupted || notebook.wants_to_interrupt || !will_run_code(notebook)
             relay_reactivity_error!(cell, InterruptException())
         else
-            run = run_single!(
-                (session, notebook), cell,
+            run = run_single_fn!(
+                workspace, cell,
                 new_topology.nodes[cell], new_topology.codes[cell];
                 user_requested_run = (user_requested_run && cell ∈ roots),
                 capture_stdout = session.options.evaluation.capture_stdout,
@@ -196,16 +205,16 @@ function run_reactive_core!(
             update_dependency_cache!(notebook)
             save_notebook(session, notebook)
 
-            return run_reactive_core!(session, notebook, new_topology, new_new_topology, to_run; deletion_hook, user_requested_run, already_run = to_run[1:i])
+            return run_reactive_core!(session, notebook, new_topology, new_new_topology, to_run; deletion_hook, user_requested_run, already_run = to_run[1:i], workspace_override, old_workspace_name_override, send_notebook_changes, run_single_fn!)
         elseif !isempty(implicit_usings)
-            new_soft_definitions = WorkspaceManager.collect_soft_definitions((session, notebook), implicit_usings)
+            new_soft_definitions = WorkspaceManager.collect_soft_definitions(workspace, implicit_usings)
             notebook.topology = new_new_topology = with_new_soft_definitions(new_topology, cell, new_soft_definitions)
 
             # update cache and save notebook because the dependencies might have changed after expanding macros
             update_dependency_cache!(notebook)
             save_notebook(session, notebook)
 
-            return run_reactive_core!(session, notebook, new_topology, new_new_topology, to_run; deletion_hook, user_requested_run, already_run = to_run[1:i])
+            return run_reactive_core!(session, notebook, new_topology, new_new_topology, to_run; deletion_hook, user_requested_run, already_run = to_run[1:i], workspace_override, old_workspace_name_override, send_notebook_changes, run_single_fn!)
         end
     end
 
